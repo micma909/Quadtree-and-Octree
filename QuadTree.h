@@ -2,32 +2,37 @@
 #include <vector>
 #include <cassert>
 
+
 #include <glew.h>
 #include <glfw3.h>
 #include <glm.hpp>
 using namespace glm;
 
 // Notes:
-
-
-
 class Point
 {
 public:
-	Point(float x, float y, float vx, float vy, float r) : x(x), y(y), vx(vx), vy(vy), r(r), collision(false)
+	Point(float x, float y, float vx = 0, float vy = 0, float r = 0) :
+		x(x),
+		y(y),
+		vx(vx),
+		vy(vy),
+		r(r),
+		ax(0), 
+		ay(0), 
+		collision(false)
 	{}
-	
+
 	float x;
 	float y;
 	float vx;
-
-
-
-
 	float vy;
+	float ax;
+	float ay;
 	float r;
 	bool collision;
 	float speed;
+	float color;
 };
 
 
@@ -61,27 +66,25 @@ public:
 				 range.y - range.h > y + h ||
 				 range.y + range.h < y - h);
 	}
-
-	void drawBounds()
-	{
-		GLfloat lineVertices[] =
-		{
-			x - w, y, 0,
-			x + w, y, 0,
-			x, y + h, 0,
-			x, y - h, 0
-		};
-		// Draw
-
-		glColor4f(1.f, 1.f, 1.f, 0.2f);
-
-		glEnableClientState(GL_VERTEX_ARRAY);
-		glVertexPointer(3, GL_FLOAT, 0, lineVertices);
-		glDrawArrays(GL_LINES, 0, 4);
-		glDisableClientState(GL_VERTEX_ARRAY);
-	}
-
 };
+
+static void drawBounds(Rectangle b)
+{
+	GLfloat lineVertices[] =
+	{
+		b.x - b.w, b.y, 0,
+		b.x + b.w, b.y, 0,
+		b.x, b.y + b.h, 0,
+		b.x, b.y - b.h, 0
+	};
+	// Draw
+	glColor4f(1.f, 1.f, 1.f, 0.2f);
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(3, GL_FLOAT, 0, lineVertices);
+	glDrawArrays(GL_LINES, 0, 4);
+	glDisableClientState(GL_VERTEX_ARRAY);
+}
 
 static void drawPoints(std::vector<Point>* points, float r, float g, float b, float a)
 {
@@ -89,13 +92,13 @@ static void drawPoints(std::vector<Point>* points, float r, float g, float b, fl
 	{
 		glPointSize(p.r);
 		
-
 		if (p.collision)
-			glColor4f(1, 0, 0, 1);
+			glColor4f(p.color, 1.0f - p.color, 0, 1);
 		else
 			glColor4f(r, g, b, a);
 	
-
+		glColor4f(r, g - p.color * 0.9f, b, a);
+		
 		GLfloat pointVert[] = { p.x, p.y };
 		glEnableClientState(GL_VERTEX_ARRAY);
 		glVertexPointer(2, GL_FLOAT, 0, pointVert);
@@ -124,11 +127,6 @@ static void drawPoints(std::vector<Point*>* points, float r, float g, float b, f
 	for (auto& p : *points)
 	{
 		glPointSize(p->r);
-		if (p->collision)
-		{
-			glPointSize(10.0f);
-			glColor4f(1, 0, 0, 1);
-		}
 
 		GLfloat pointVert[] = { p->x, p->y };
 		glEnableClientState(GL_VERTEX_ARRAY);
@@ -209,13 +207,11 @@ public:
 
 		divided = true;
 
-
 		north_east->level = this->level + 1;
 		north_west->level = this->level + 1;
 		south_east->level = this->level + 1;
 		south_west->level = this->level + 1;
 
-		// TODO: Restore delegation
 		tryDelegatePoints();
 		capacity = 0;
 	}
@@ -233,7 +229,6 @@ public:
 				south_west->insert(m_points[i]) ||
 				south_east->insert(m_points[i]))
 			{
-				//north_west->m_points.push_back(m_points[i]);
 				m_points.erase(m_points.begin() + i);
 			}
 
@@ -243,6 +238,7 @@ public:
 				size = m_points.size();
 			}
 		}
+		m_points.clear(); // not sure about this?
 	}
 
 	bool insert(Point* p)
@@ -314,13 +310,6 @@ public:
 		{
 			g_count++;
 
-			for (int i = 0; i < m_points.size(); i++)
-			{
-				if (range.contains(*m_points[i]))
-				{
-					result->push_back(m_points[i]);
-				}
-			}
 			if (divided)
 			{
 				north_west->query(range, result);
@@ -328,6 +317,15 @@ public:
 				south_west->query(range, result);
 				south_east->query(range, result);
 			}
+
+			for (int i = 0; i < m_points.size(); i++)
+			{
+				if (range.contains(*m_points[i]))
+				{
+					result->push_back(m_points[i]);
+				}
+			}
+			
 		}
 		return;
 	}
@@ -353,17 +351,17 @@ public:
 		return total;
 	}
 
-	void draw()
+	void drawGrid()
 	{
 		glEnable(GL_PROGRAM_POINT_SIZE_EXT);
 
 		if (divided)
 		{
-			boundary.drawBounds();
-			north_west->draw();
-			north_east->draw();
-			south_west->draw();
-			south_east->draw();
+			drawBounds(boundary);
+			north_west->drawGrid();
+			north_east->drawGrid();
+			south_west->drawGrid();
+			south_east->drawGrid();
 		}
 
 		if (m_points.size())
@@ -385,7 +383,4 @@ private:
 	QuadTree* north_east;
 	QuadTree* south_west;
 	QuadTree* south_east;
-
-	
-
 };
