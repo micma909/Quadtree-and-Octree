@@ -1,6 +1,6 @@
 #pragma once
 #include <random>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <cmath>
 
 #include "Util.h"
@@ -155,9 +155,9 @@ private:
 
 };
 
-static void drawPoint(glm::vec2& position, float radius)
+static void drawPoint(glm::vec2& position, float radius, glm::vec4& color)
 {
-	glColor4f(1.f, 1.f, 1.f, 1.0f);
+	glColor4f(color.r, color.g, color.b, color.a);
 	glPointSize(radius);
 
 	GLfloat pointVert[] = { position[0], position[1] };
