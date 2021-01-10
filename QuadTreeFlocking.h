@@ -6,46 +6,68 @@
 #include "Boid.h"
 
 #define DATA_ORIENTED
+static int frameCount = 0;
 
 class QTFlocking
 {
 public:
 	QTFlocking(GLFWwindow* window, int width, int height, int pointCount) : w_width(width)
 		, w_height(height)
-		, nrOfBoids(pointCount)
+		, nrBoids(pointCount)
 		, window(window)
 	{}
 
-	void data_flocking()
+	void sum(glm::vec2& sum, glm::vec2& other, int& count, float distance, float radius)
+	{
+		if (distance < radius)
+		{
+			sum += other;
+			count++;
+		}
+	}
+
+	void computeAvgForce(glm::vec2& force, glm::vec2& velocity, int& count, float maxSpeed, float maxForce)
+	{
+		force /= count;
+		if (glm::length(force) > 0)
+			force = glm::normalize(force) * maxSpeed;
+		force -= velocity;
+		if (glm::length(force) > alignmentMaxForce)
+			force = glm::normalize(force) * maxForce;
+	}
+
+	
+	void data_flocking_naive()
 	{
 		glm::vec2 alignment(0.f, 0.f);
 		glm::vec2 cohesion(0.f, 0.f);
 		glm::vec2 separation(0.f, 0.f);
+
 		int alignmentCount = 0;
 		int cohesionCount = 0;
 		int separationCount = 0;
-		for (int i = 0; i < positions.size(); i++)
+		for (int i = 0; i < points.size(); i++)
 		{
-			for (int j = 0; j < positions.size(); j++)
+			for (int j = 0; j < points.size(); j++)
 			{
 				if (i != j)
 				{
-					float d = distance(&positions[i], &positions[j]);
-					if (d < this->alignmentRadius)
+					float d = distance(points[i].pos, points[j].pos);
+					if (d < this->alignmentRadius && alignmentOn)
 					{
 						alignment += velocities[j];
 						alignmentCount++;
 					}
 
-					if (d < this->cohesionRadius)
+					if (d < this->cohesionRadius && cohesionOn)
 					{
-						cohesion += positions[j];
+						cohesion += points[j].pos;
 						cohesionCount++;
 					}
 
-					if (d < this->separationRadius)
+					if (d < this->separationRadius && separationOn)
 					{
-						glm::vec2 diff = positions[i] - positions[j];
+						glm::vec2 diff = points[i].pos - points[j].pos;
 						diff /= d;
 
 						separation += diff;
@@ -54,7 +76,7 @@ public:
 				}
 			}
 
-			if (alignmentCount)
+			if (alignmentCount > 0 && alignmentOn)
 			{
 				alignment /= alignmentCount;
 				alignment = glm::normalize(alignment) * alignmentMaxSpeed;
@@ -65,10 +87,10 @@ public:
 				}
 			}
 
-			if (cohesionCount > 0)
+			if (cohesionCount > 0 && cohesionOn)
 			{
 				cohesion /= cohesionCount;
-				cohesion -= positions[i];
+				cohesion -= points[i].pos;
 
 				if (glm::length(cohesion) > 0)
 					cohesion = glm::normalize(cohesion) * cohesionMaxSpeed;
@@ -78,7 +100,7 @@ public:
 					cohesion = glm::normalize(cohesion) * cohesionMaxForce;
 			}
 
-			if (separationCount > 0)
+			if (separationCount > 0 && separationOn)
 			{
 				separation /= separationCount;
 				if (glm::length(separation) > 0)
@@ -88,9 +110,10 @@ public:
 					separation = glm::normalize(separation) * separationMaxForce;
 			}
 
-			accelerations[i] += alignment * alignmentCoeff;
-			accelerations[i] += cohesion * cohesionCoeff;
-			accelerations[i] += separation * separationCoeff;
+			accelerations[frameIndex][i] += alignment;
+			accelerations[frameIndex][i] += cohesion;
+			accelerations[frameIndex][i] += separation;
+			accelerations[frameIndex][i] *= 1.5;
 			// reset
 			alignment *= 0.f;
 			cohesion *= 0.f;
@@ -101,115 +124,204 @@ public:
 		}
 	}
 
-
-	void data_align()
+	void data_flocking_quad()
 	{
-		glm::vec2 steering(0.f, 0.f);
-		int count = 0;
-		for (int i = 0; i < positions.size(); i++)
+		glm::vec2 alignment(0.f, 0.f);
+		glm::vec2 cohesion(0.f, 0.f);
+		glm::vec2 separation(0.f, 0.f);
+		int alignmentCount = 0;
+		int cohesionCount = 0;
+		int separationCount = 0;
+
+		std::vector<Point*> nearBoids;
+		//separationMaxForce = 1.6f;
+
+		for (int i = 0; i < points.size(); i++)
 		{
-			for (int j = 0; j < positions.size(); j++)
+			glm::vec2 avoidance(0.f, 0.f); // non-avg for now!
+			BoidData& thisBoidsData = getBoidData(points[i].data);
+			bool hunterDetected = false;
+			ppAvoidance[i] *= 0.f;
+
+			if (thisBoidsData.behaviorType == Behavior::Hunter && !addHunters)
+				continue;
+
+			if (thisBoidsData.behaviorType == Behavior::Boid)
 			{
-				if (i != j)
+				glm::vec2& p1 = points[i].pos;
+				//float maxRadius = std::max(alignmentRadius, std::max(cohesionRadius, separationRadius));
+				glm::vec2 offsetFov= p1;
+
+				if(glm::length(velocities[i]) > 0)
+					offsetFov = p1 + glm::normalize(velocities[i]) * queryRadius;
+				Rectangle searchArea(offsetFov.x, offsetFov.y, queryRadius, queryRadius);
+				
+				// fade color
+				ppColor[i].x += 0.01f;
+				ppColor[i].y += 0.01f;
+				ppColor[i].z += 0.01f;
+				ppColor[i].w -= 0.01f;
+				ppColor[i].w = std::max(0.2f, ppColor[i].w);
+				ppRadius[i] -= 0.05f;
+				ppRadius[i] = std::max(2.5f, ppRadius[i]);
+				//if (i < 3)
+				//{
+				//	drawRange(searchArea, queryRadius, 1, 1, 0.1f);
+				//	//glm::vec2 a = p1 + glm::normalize(velocities[i])*25.f;
+				//
+				//	drawHollowCircle(offsetFov.x, offsetFov.y, alignmentRadius);
+				//	
+				//}
+				qt->query(searchArea, &nearBoids);
+
+				for (int j = 0; j < nearBoids.size(); j++)
 				{
-					float d = distance(&positions[i], &positions[j]);
-					if (d < this->alignmentRadius)
+					float d = distance(p1, nearBoids[j]->pos);
+					if (d < 0.1f)
+						continue;
+
+					BoidData& otherBoidData = getBoidData(nearBoids[j]->data);
+					glm::vec2& p2 = nearBoids[j]->pos;
+					if (otherBoidData.behaviorType == Behavior::Boid)
 					{
-						steering += velocities[j];
-						count++;
+						if (d < this->alignmentRadius && alignmentOn)
+						{
+							int idx = otherBoidData.arrayIndex;
+							alignment += velocities[idx];
+							alignmentCount++;
+						}
+
+						if (d < this->cohesionRadius && cohesionOn)
+						{
+							cohesion += nearBoids[j]->pos;
+							cohesionCount++;
+						}
+
+						if (d < this->separationRadius && separationOn)
+						{
+							glm::vec2 diff = points[i].pos - nearBoids[j]->pos;
+							diff /= std::pow(d, 2);
+
+							separation += diff;
+							separationCount++;
+						}
+					}
+					else if(otherBoidData.behaviorType == Behavior::Hunter && addHunters)
+					{
+						//if (d < this->separationRadius && separationOn )
+						{
+							glm::vec2 diff = points[i].pos - nearBoids[j]->pos;
+							diff /= d;
+
+							//avoidance = diff;
+							ppColor[i] = glm::vec4(0, 1, 1, 1);
+							ppAvoidance[i] = 4.f*diff;
+							ppSeparationForce[i] = 2;
+							ppRadius[i] = 5.0f;
+							alignment *= 0;
+							cohesion *= 0;
+							hunterDetected = true;
+						}
+
 					}
 				}
 			}
-	
-			if (count)
+			else if (thisBoidsData.behaviorType == Behavior::Hunter)
 			{
-				steering /= count;
-				steering = glm::normalize(steering) * alignmentMaxSpeed;
-				steering -= velocities[i];
-				if (glm::length(steering) > alignmentMaxForce)
-				{
-					steering = glm::normalize(steering) * alignmentMaxForce;
-				}
-			}
-			accelerations[i] += steering * alignmentCoeff;
-			steering *= 0.f;
-			count = 0;
-		}
-	}
-
-	void data_cohesion()
-	{
-		glm::vec2 steering(0.f, 0.f);
-		int count = 0;
-		for (int i = 0; i < positions.size(); i++)
-		{
-			for (int j = 0; j < positions.size(); j++)
-			{
-				if (i != j)
-				{
-					float d = distance(&positions[i], &positions[j]);
-					if (d < this->cohesionRadius)
-					{
-						steering += positions[j];
-						count++;
-					}
-				}
-			}
-	
-			if (count > 0)
-			{
-				steering /= count;
-				steering -= positions[i];
-				
-				if(glm::length(steering) > 0)
-					steering = glm::normalize(steering) * cohesionMaxSpeed;
-				steering -= velocities[i];
-				
-				if (glm::length(steering) > cohesionMaxForce)
-					steering = glm::normalize(steering) * cohesionMaxForce;
-			}
-			accelerations[i] += steering * cohesionCoeff;
-			steering *= 0.f;
-			count = 0;
-		}
-	}
-
-	void data_separation()
-	{
-		glm::vec2 steering(0.f, 0.f);
-		int count = 0;
-		for (int i = 0; i < positions.size(); i++)
-		{
+				float hunterRadius = 300.0f;
+				glm::vec2& p1 = points[i].pos;
+				Rectangle hunterSearchArea(p1.x, p1.y, hunterRadius, hunterRadius);
+				qt->query(hunterSearchArea, &nearBoids);
 			
-			for (int j = 0; j < positions.size(); j++)
-			{
-				if (i != j)
+				for (int j = 0; j < nearBoids.size(); j++)
 				{
-					float d = distance(&positions[i], &positions[j]);
-					if (d < this->separationRadius)
+					float d = glm::distance(p1, nearBoids[j]->pos);
+			
+					if (d < hunterRadius && cohesionOn && frameCount % 20 == 0)
 					{
-						glm::vec2 diff = positions[i] - positions[j];
-						diff /= d;
-
-						steering += diff;
-						count++;
+						cohesion += nearBoids[j]->pos;
+						cohesionCount++;
 					}
 				}
 			}
 
-			if (count > 0)
+			if (!hunterDetected)
 			{
-				steering /= count;
-				if (glm::length(steering) > 0)
-					steering = glm::normalize(steering) * separationMaxSpeed;
-				steering -= velocities[i];
-				if (glm::length(steering) > separationMaxForce)
-					steering = glm::normalize(steering) * separationMaxForce;
+
+				ppSeparationForce[i] -= 0.5f;
+				ppSeparationForce[i] = std::max(ppSeparationForce[i], separationMaxForce);
 			}
-			accelerations[i] += steering * separationCoeff;
-			steering *= 0.f;
-			count = 0;
-		}
+
+			if (alignmentCount > 0 && alignmentOn)
+			{
+				alignment /= alignmentCount;
+				if (glm::length(alignment) > 0)
+					alignment = glm::normalize(alignment) * alignmentMaxSpeed;
+				alignment -= velocities[i];
+				if (glm::length(alignment) > alignmentMaxForce)
+				{
+					alignment = glm::normalize(alignment) * alignmentMaxForce;
+				}
+			}
+			
+			if (cohesionCount > 0 && cohesionOn)
+			{
+				cohesion /= cohesionCount;
+				cohesion -= points[i].pos;
+			
+				if (glm::length(cohesion) > 0)
+					cohesion = glm::normalize(cohesion) * cohesionMaxSpeed;
+				cohesion -= velocities[i];
+	
+				if (glm::length(cohesion) > cohesionMaxForce)
+					cohesion = glm::normalize(cohesion) * cohesionMaxForce;
+			}
+
+			if (separationCount > 0 && separationOn)
+			{
+				separation /= separationCount;
+				if (glm::length(separation) > 0)
+					separation = glm::normalize(separation) * separationMaxSpeed;
+				separation -= velocities[i];
+				if (glm::length(separation) > ppSeparationForce[i])
+					separation = glm::normalize(separation) * ppSeparationForce[i];
+			}
+
+
+			if ( thisBoidsData.behaviorType == Behavior::Hunter)
+			{
+				if (cohesionCount < 40.0f)
+					cohesion = accelerations[1 - frameIndex][i] * 0.9f;
+				else
+					cohesion *= 4.0f;
+			}
+	
+			accelerations[frameIndex][i] += alignment;
+			accelerations[frameIndex][i] += cohesion;
+			accelerations[frameIndex][i] += separation;
+			accelerations[frameIndex][i] += ppAvoidance[i];
+
+			ppAvoidance[i] -= 0.01f;
+			ppAvoidance[i] = glm::max(ppAvoidance[i], 0.0f);
+			
+			if (thisBoidsData.behaviorType == Behavior::Hunter)
+			{
+				accelerations[frameIndex][i] *= 2.5f;
+			}
+
+			// reset
+			alignment *= 0.f;
+			cohesion *= 0.f;
+			separation *= 0.f;
+
+			avoidance *= 0.f;
+
+			alignmentCount = 0;
+			cohesionCount = 0;
+			separationCount = 0;
+
+			nearBoids.clear();
+		}	
 	}
 
 
@@ -219,20 +331,66 @@ public:
 		for(int i = 0; i < nrOfBoids; i++)
 			boids.push_back({ w_width, w_height });
 #else
+		points.clear();
+		velocities.clear();
+		ppRadius.clear();
+		ppColor.clear();
+		for(int i = 0; i < 2; i++)
+		accelerations[i].clear();
+
+		if(qt != nullptr)
+			qt->clear();
+
+		nrHunters = 4;
+		this->treeLevelCapacity = 10;
+		Rectangle boundary(w_width / 2, w_height / 2, w_width / 2, w_height / 2);
+		qt = new QuadTree(boundary, this->treeLevelCapacity);
+
 		// data oriented approach:
-		for (int i = 0; i < nrOfBoids; i++)
-		{
-			positions.push_back({ RandomFloat(0, w_width), RandomFloat(0, w_height) });
+		int boidCount = 0;
+		for (int i = 0; i < nrHunters; i++)
+		{   
+			BoidData boidData = { Behavior::Hunter , boidCount };
+		 
+			points.push_back({ RandomFloat(-1.f, 1.f), RandomFloat(-1.f, 1.f), boidData });
 			velocities.push_back({ RandomFloat(-1.f, 1.f), RandomFloat(-1.f, 1.f) });
-			accelerations.push_back({ 0.f, 0.f });
-			ppRadius.push_back(5.0f);
-			ppColor.push_back( { 1, 1, 1, RandomFloat(0.2f, 1.0f)});
+			for(int j = 0; j < 2; j++)
+				accelerations[j].push_back({ 0.f, 0.f });
+			ppRadius.push_back(10.f);
+			ppColor.push_back({ 1, 0.6, 0, 1 });
+			ppSeparationForce.push_back(0.f);
+			ppAvoidance.push_back({ 0.f, 0.f });
+
+			// build quadtree
+			qt->insert(&points[i]);
+			boidCount++;
 		}
+
+		for (int i = 0; i < nrBoids; i++)
+		{
+			BoidData boidData = { Behavior::Boid , boidCount };
+			points.push_back({ RandomFloat(0, w_width), RandomFloat(0, w_height), boidData });
+			velocities.push_back({ 0, 0});
+			for (int j = 0; j < 2; j++)
+				accelerations[j].push_back({ 0.f, 0.f });
+			ppRadius.push_back(2.5f);
+			ppColor.push_back( { 1, 1, 1, RandomFloat(0.3f, 1.0f)});
+			ppSeparationForce.push_back(separationMaxForce);
+			ppAvoidance.push_back({ 0.f, 0.f });
+
+			// build quadtree
+			qt->insert(&points[i]);
+			boidCount++;
+		}
+
+		
+
 #endif
 	}
 
 	void Run()
 	{
+
 #ifndef DATA_ORIENTED
 		for (int i = 0; i < boids.size(); i++)
 		{	
@@ -242,90 +400,140 @@ public:
 			drawBoid(&boids[i]);
 		}
 #else
-		//if (alignmentOn) data_align();
-		//if (cohesionOn) data_cohesion();
-		//if (separationOn) data_separation();
-
-		data_flocking();
-
-		for (int i = 0; i < positions.size(); i++)
+		if (quadTree)
 		{
-			borderCheck(&positions[i], w_width, w_height, true);
+			data_flocking_quad();
+		}
+		else
+		{
+			data_flocking_naive();
+		}
+		
+		qt->clear(treeLevelCapacity);
+		for (int i = 0; i < points.size(); i++)
+		{
+			borderCheck(&points[i].pos, w_width, w_height, true);
 			
 			// update
-			positions[i] += velocities[i];
-			velocities[i] += accelerations[i];
-			//if (glm::length(velocities[i]) > ppMaxSpeed[i])
-			//	velocities[i] = glm::normalize(velocities[i]) * ppMaxSpeed[i];
+			points[i].pos += velocities[i];
+			velocities[i] += accelerations[frameIndex][i];
+			// TODO: Make velocities doublebuffer!
+			accelerations[frameIndex][i] *= 0.0f;
 
-			accelerations[i] *= 0.0f;
-			drawPoint(positions[i], ppRadius[i], ppColor[i]);
+			BoidData& thisBoidsData = getBoidData(points[i].data);
+			bool hunterDetected = false;
+			ppAvoidance[i] *= 0.f;
+
+			if (thisBoidsData.behaviorType == Behavior::Hunter && !addHunters)
+				continue;
+
+			drawPoint(points[i].pos, velocities[i], ppRadius[i], ppColor[i]);
+
+			// rebuild quadtree
+			bool success = qt->insert(&points[i]);
 		}
+	
+		if(drawQuadTree)
+			qt->drawGrid();
+
+		frameCount++;
+		frameIndex = !frameIndex;
 #endif
 	}
 
 	void ImGuiMenu()
 	{
-		static float aR = 50.0f;
+		static float qR = 65.0f;
+
+		static float aR = 65.0f;
 		static float cR = 100.0f;
-		static float sR = 100.0f;
+		static float sR = 30.0f;
 
-		static float aC = 1.0f;
-		static float cC = 1.0f;
-		static float sC = 1.0f;
+		static float aMaxSpeed = 40.f;
+		static float aMaxForce = 1.2f;
 
-		static float aMaxSpeed = 4.0f;
-		static float aMaxForce = 0.2f;
+		static float cMaxSpeed = 6.0f;
+		static float cMaxForce = 1.1f;
 
-		static float cMaxSpeed = 4.0f;
-		static float cMaxForce = 0.2f;
-
-		static float sMaxSpeed = 4.0f;
-		static float sMaxForce = 0.2f;
+		static float sMaxSpeed = 20.f;
+		static float sMaxForce = 2.0f;
 
 		static int counter = 0;
+		static int treeCapacity = 10;
 
-		ImGui::Begin("Flocking control");
+		static float maxSearchRadius = 150.f;
 
-		//ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-		//ImGui::Checkbox("Another Window", &show_another_window);
+		ImVec4 col_text = ImColor(255, 255, 255);
+		ImVec4 col_main = ImColor(30, 30, 30);
+		ImVec4 col_oran = ImColor(255, 185, 0);
+		ImVec4 col_doran = ImColor(255, 150, 0);
+		ImVec4 col_area = ImColor(51, 56, 69);
+		ImGuiStyle& style = ImGui::GetStyle();
+
+		style.Colors[ImGuiCol_FrameBg] = ImVec4(col_main.x, col_main.y, col_main.z, 1.00f); 
+		style.Colors[ImGuiCol_Text] = ImVec4(0,0, 0, 1.00f);
+		style.Colors[ImGuiCol_TitleBgActive] = ImVec4(col_doran.x, col_doran.y, col_doran.z, 1.00f);
+		style.Colors[ImGuiCol_CheckMark] = ImVec4(col_oran.x, col_oran.y, col_oran.z, 1.00f);
+		style.Colors[ImGuiCol_Button] = ImVec4(col_oran.x, col_oran.y, col_oran.z, 1.00f);
+		style.Colors[ImGuiCol_SliderGrab] = ImVec4(col_oran.x, col_oran.y, col_oran.z, 0.90f);
+		style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(col_oran.x, col_oran.y, col_oran.z, 1.00f);
+
+		ImGuiWindowFlags window_flags = 0;
+		window_flags |= ImGuiWindowFlags_NoBackground;
+		//ImGui::Begin("Dear ImGui Demo", p_open, window_flags)
+		ImGui::Begin("Flocking control", nullptr, window_flags);
+		style.Colors[ImGuiCol_Text] = ImVec4(255, 255, 255, 1.00f);
+		ImGui::SliderInt("QT Level Capacity", &treeCapacity, 1, 100);
+		this->treeLevelCapacity = treeCapacity;
+		
+		ImGui::SliderFloat("Query Radius", &qR, 0.0f, maxSearchRadius);
+		this->queryRadius = qR;
 
 		ImGui::Checkbox("Alignment", &alignmentOn);
-		ImGui::SliderFloat("radius_A", &aR, 0.0f, w_width); 
+		ImGui::SliderFloat("radius_A", &aR, 0.0f, qR);
 		this->alignmentRadius = aR;
-		ImGui::SliderFloat("strength_A", &aC, 0.0f, 10.0f);
-		this->alignmentCoeff = aC;
-		ImGui::SliderFloat("max speed_A", &aMaxSpeed, 0.0f, 10.0f);
+		ImGui::SliderFloat("max speed_A", &aMaxSpeed, 0.0f, 40.0f);
 		this->alignmentMaxSpeed = aMaxSpeed;
-		ImGui::SliderFloat("max force_A", &aMaxForce, 0.0f, 10.0f);
+		ImGui::SliderFloat("max force_A", &aMaxForce, 0.0f, 20.0f);
 		this->alignmentMaxForce = aMaxForce;
 
+
 		ImGui::Checkbox("Cohesion", &cohesionOn);
-		ImGui::SliderFloat("radius_C", &cR, 0.0f, w_width);
+		ImGui::SliderFloat("radius_C", &cR, 0.0f, maxSearchRadius);
 		this->cohesionRadius = cR;
-		ImGui::SliderFloat("strength_C", &cC, 0.0f, 10.0f);
-		this->cohesionCoeff = cC;
-		ImGui::SliderFloat("max speed_C", &cMaxSpeed, 0.0f, 10.0f);
+		ImGui::SliderFloat("max speed_C", &cMaxSpeed, 0.0f, 20.0f);
 		this->cohesionMaxSpeed = cMaxSpeed;
-		ImGui::SliderFloat("max force_C", &cMaxForce, 0.0f, 10.0f);
+		ImGui::SliderFloat("max force_C", &cMaxForce, 0.0f, 20.0f);
 		this->cohesionMaxForce = aMaxForce;
 
+		
+
 		ImGui::Checkbox("Separation", &separationOn);
-		ImGui::SliderFloat("radius_S", &sR, 0.0f, w_width);
+		ImGui::SliderFloat("radius_S", &sR, 0.0f, maxSearchRadius);
 		this->separationRadius = sR;
-		ImGui::SliderFloat("strength_S", &sC, 0.0f, 10.0f);
-		this->separationCoeff = cC;
-		ImGui::SliderFloat("max speed_S", &sMaxSpeed, 0.0f, 10.0f);
+		ImGui::SliderFloat("max speed_S", &sMaxSpeed, 0.0f, 20.0f);
 		this->separationMaxSpeed = sMaxSpeed;
-		ImGui::SliderFloat("max force_S", &sMaxForce, 0.0f, 10.0f);
+		ImGui::SliderFloat("max force_S", &sMaxForce, 0.0f, 20.0f);
 		this->separationMaxForce = sMaxForce;
 
+		
+		ImGui::Checkbox("QuadTree", &quadTree);
+		if (quadTree)
+		{
+			ImGui::SameLine();
+			ImGui::Checkbox("Draw QuadTree", &drawQuadTree);
+			ImGui::Checkbox("Add Hunters", &addHunters);
+		}
+		
 		//ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+		style.Colors[ImGuiCol_Text] = ImVec4(0, 0, 0, 1.00f);
+		if (ImGui::Button("Reset"))
+		{
+			Setup();
+		}
 
-		if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-			counter++;
-		ImGui::SameLine();
-		ImGui::Text("counter = %d", counter);
+		//ImGui::SameLine();
+		//ImGui::Text("counter = %d", counter);
 
 		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 		ImGui::End();
@@ -333,24 +541,47 @@ public:
 private:
 	int w_width;
 	int w_height;
-	int nrOfBoids;
+	int nrBoids;
+	int nrHunters;
 
-	GLFWwindow* window;
 	std::vector<Boid> boids;
-
-	std::vector<glm::vec2> positions;
-	std::vector<glm::vec2> velocities;
-	std::vector<glm::vec2> accelerations;
 	std::vector<glm::vec4> ppColor;
+	std::vector<float> ppSeparationForce;
+
+	std::vector<glm::vec2> ppAvoidance;
+
+	std::vector<Point> points;
+	std::vector<glm::vec2> velocities;
+	std::vector<glm::vec2> accelerations[2];
+	int frameIndex = 0;
+
+	enum Behavior
+	{
+		Boid = 0,
+		Leader = 1,
+		Hunter = 2,
+		Undefined = 3
+	};
+
+	struct BoidData
+	{
+		Behavior behaviorType;
+		int arrayIndex;
+	};
+
+
+	BoidData& getBoidData(std::any b)
+	{
+		return std::any_cast<BoidData&>(b);
+	}
+
 	std::vector<float> ppRadius;
+
+	float queryRadius;
 
 	float alignmentRadius;
 	float cohesionRadius;
 	float separationRadius;
-
-	float alignmentCoeff;
-	float cohesionCoeff;
-	float separationCoeff;
 
 	// max values
 	float alignmentMaxForce;
@@ -362,8 +593,16 @@ private:
 	float separationMaxForce;
 	float separationMaxSpeed;
 
-	bool alignmentOn = true;
-	bool cohesionOn = true;
-	bool separationOn = true;
+	int treeLevelCapacity;
 
+	bool alignmentOn = false;
+	bool cohesionOn = false;
+	bool separationOn = false;
+
+	bool quadTree = false;
+	bool drawQuadTree = false;
+	bool addHunters = false;
+
+	GLFWwindow* window;
+	QuadTree* qt;
 };

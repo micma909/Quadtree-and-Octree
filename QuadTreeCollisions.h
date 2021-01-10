@@ -19,18 +19,20 @@ public:
 
         qt = new QuadTree(boundary, this->treeLevelCapacity);
 
+        velocities.resize(nrPoints);
+        radiuses.resize(nrPoints);
+        speeds.resize(nrPoints);
+        colors.resize(nrPoints);
+
         for (int i = 0; i < nrPoints; i++)
         {
-            allPoints.push_back({ 0,0,0,0,0 });
-            allPoints[i].x = rand() % w_width;// +(w_width / 4);
-            allPoints[i].y = rand() % w_height / 32 + (w_height / 2);
-            allPoints[i].vx = 1.0f;// RandomFloat(-1,1);
-            allPoints[i].vy = 0.0f; //RandomFloat(-1, 1);
-            allPoints[i].r = RandomFloat(2, 10);
-            allPoints[i].speed = RandomFloat(1, 2);
-            allPoints[i].color = 0.0f;
-
-            qt->insert(&allPoints[i]);
+            positions.push_back({ RandomFloat(0, w_width), RandomFloat(0, w_height) / 32 + (w_height / 2) });
+            velocities[i] = glm::vec2(-1,0);
+            radiuses[i] = RandomFloat(4, 6);
+            speeds[i] = RandomFloat(1, 2);
+            colors[i] = glm::vec4(1.f,0.8f,0.f,1.f);
+        
+            qt->insert(&positions[i]);
         }
         this->oldState_left = GLFW_RELEASE;
         this->oldState_right = GLFW_RELEASE;
@@ -75,7 +77,13 @@ public:
             double xpos, ypos;
             glfwGetCursorPos(window, &xpos, &ypos);
 
-            allPoints.push_back(Point(xpos, w_height - ypos, 0, 0, 2.0f));
+            positions.push_back(Point(xpos, w_height - ypos));
+            //positions.push_back({ rand() % w_width, rand() % w_height / 32 + (w_height / 2) });
+            velocities.push_back(glm::vec2(-1, 0));
+            radiuses.push_back(4.0f);//RandomFloat(2, 10);
+            speeds.push_back(RandomFloat(1, 2));
+            colors.push_back(glm::vec4(0.f, 1.0f, 1.f, 1.f));
+
             clicks++;
 
         }
@@ -168,57 +176,53 @@ public:
     {
         qt->clear(treeLevelCapacity);
 
-        for (int i = 0; i < allPoints.size(); i++)
-        {
-            allPoints[i].collision = false;
-       
-            allPoints[i].x += allPoints[i].vx * allPoints[i].speed;
-            allPoints[i].y += allPoints[i].vy * allPoints[i].speed;
+        for (int i = 0; i < positions.size(); i++)
+        {       
+            positions[i].pos += velocities[i] * speeds[i];
+            borderCheck(&positions[i].pos, &velocities[i], w_width, w_height, wrap);
 
-            borderCheck(&allPoints[i], w_width, w_height, wrap);
-
-            bool success = qt->insert(&allPoints[i]);
+            bool success = qt->insert(&positions[i]);
             if (!success)
             {
-                failures.push_back(allPoints[i]);
+                failures.push_back(positions[i]);
             }
         }
     }
 
     void NaiveCollision()
     {
-        nrOfChecks = 0;
+     
         if (runNaive)
         {
+            nrOfChecks = 0;
             // check collision naive
-            for (int i = 0; i < allPoints.size(); i++)
+            for (int i = 0; i < positions.size(); i++)
             {
-                Point* p1 = &allPoints[i];
-                p1->color -= 0.05f;
-                for (int j = 0; j < allPoints.size(); j++)
+                Point* p1 = &positions[i];
+
+                colors[i].g += 0.05f;
+                colors[i].g = std::min(0.8f, colors[i].g);
+
+                for (int j = 0; j < positions.size(); j++)
                 {
                     nrOfChecks++;
 
-                    Point* p2 = &allPoints[j];
+                    Point* p2 = &positions[j];
 
-                    float dx = p1->x - p2->x;
-                    float dy = p1->y - p2->y;
+                    float dx = p1->pos.x - p2->pos.x;
+                    float dy = p1->pos.y - p2->pos.y;
 
                     float distance = sqrt(dx * dx + dy * dy);
-                    p1->collision = false;
 
-                    if (i != j && distance * 2.0f < p1->r + p2->r)
+                    if (i != j && distance * 2.0f < radiuses[i] + radiuses[j])
                     {
-                        p1->vx = dx * 0.1f * p1->speed;
-                        p1->vy = dy * 0.1f * p1->speed;
-                        p2->vx = -dx * 0.1f * p2->speed;
-                        p2->vy = -dy * 0.1f * p2->speed;
+                        velocities[i].x =  dx * 0.1f * speeds[i];
+                        velocities[i].y =  dy * 0.1f * speeds[i];
+                        velocities[j].x = -dx * 0.1f * speeds[j];
+                        velocities[j].y = -dy * 0.1f * speeds[j];
 
-                        p1->color = 1.0f;
-                        p2->color = 1.0f;
-
-                        p1->collision = true;
-                        break;
+                        colors[i].g = 0.0f;
+                        colors[j].g = 0.0f;
                     }
                 }
             }
@@ -229,42 +233,39 @@ public:
     {
         if (runQuad)
         {
+            nrOfChecks = 0;
             std::vector<Point*> collidable;
-            for (int i = 1; i < allPoints.size(); i++)
+            for (int i = 1; i < positions.size(); i++)
             {
-                Point* p1 = &allPoints[i];
-                Rectangle pBounds(p1->x, p1->y, p1->r * 0.5, p1->r * 0.5);
-
-                p1->color -= 0.05f;
+                Point* p1 = &positions[i];
+                auto radius = radiuses[i];
+                Rectangle pBounds(p1->pos.x, p1->pos.y, radius * 0.5, radius * 0.5);
 
                 qt->query(pBounds, &collidable);
+
+                colors[i].g += 0.05f;
+                colors[i].g = std::min(0.8f, colors[i].g);
 
                 for (int j = 0; j < collidable.size(); j++)
                 {
                     nrOfChecks++;
-                    Point* p2 = collidable[j];
-
-                    float dx = p1->x - p2->x;
-                    float dy = p1->y - p2->y;
-
-                    float distance = sqrt(dx * dx + dy * dy);
+              
+                    glm::vec2 diff = p1->pos - collidable[j]->pos;
+                    float distance = glm::length(diff);
 
                     if (distance == 0)
                         continue;
 
-                    p1->collision = false;
-
-                    if (distance * 2.0f < p1->r + p2->r)
+                    radius += radiuses[j];
+                    if (distance * 2.0f < radius)
                     {
-                        p1->vx = dx * 0.1f * p1->speed;
-                        p1->vy = dy * 0.1f * p1->speed;
-                        p2->vx = -dx * 0.1f * p2->speed;
-                        p2->vy = -dy * 0.1f * p2->speed;
+                        velocities[i] = diff * 0.1f * speeds[i];
+                        velocities[j] = diff * 0.1f * speeds[j];
+                       
 
-                        p1->color = 1.0f;
-                        p2->color = 1.0f;
+                        colors[i].g = 0.0f;
+                        colors[j].g = 0.0f;
 
-                        p2->collision = true;
                         break;
                     }
                 }
@@ -283,7 +284,7 @@ public:
             if (countFFF >= 10)
             {
                 countFFF = 0;
-                std::cout << avgCollisions / 100 << std::endl;
+                std::cout << avgCollisions / 10 << std::endl;
                 avgCollisions = 0;
             }
         }
@@ -291,7 +292,7 @@ public:
 
         for (int k = 0; k < failures.size(); k++)
         {
-            Rectangle fail(failures[k].x, failures[k].y, 5, 5);
+            Rectangle fail(failures[k].pos.x, failures[k].pos.y, 5, 5);
             drawRange(fail, 1, 1, 1, 1);
         }
 
@@ -300,21 +301,19 @@ public:
        // if (doSearch)
         {
             qt->query(search, &foundPoints);
-            //std::cout << "searched : " << g_count << " times" << std::endl;
             g_count = 0;
             doSearch = false;
         }
 
         if (flocking || runQuad)
             qt->drawGrid();
-        drawPoints(&allPoints, 1.0f, 0.8f, 0.0f, 1.0f);
+        drawPoints(positions, velocities, radiuses, colors);
 
         // searchrange
         drawRange(search, 0.f, 1.f, 0.f, 1.0f);
         drawQuad(search, 0.f, 0.f, 0.f, 0.55f);
         drawPoints(&foundPoints, 0.f, 1.f, 1.f, 1.0f);
         foundPoints.clear();
-
     }
 
 private:
@@ -322,7 +321,12 @@ private:
 	int w_height;
 	int nrPoints;
 
-    std::vector<Point> allPoints;
+    std::vector<Point> positions;
+    std::vector<glm::vec2> velocities;
+    std::vector<float> radiuses;
+    std::vector<float> speeds;
+    std::vector<glm::vec4> colors;
+
     std::vector<Point*> foundPoints{};
     std::vector<Point> failures{};
 

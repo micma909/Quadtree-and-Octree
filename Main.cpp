@@ -17,14 +17,18 @@ using namespace glm;
 #include "QuadTreeCollisions.h"
 #include "QuadTreeFlocking.h"
 
-const int w_width = 1000;
-const int w_height = 1000;
-const int nrPoints = 100;
+static const int w_width = 1200;
+static const int w_height = 1000;
+static int nrPoints = 1500;
 
 //#define QUADTREE_COLLISIONS
 #define QUADTREE_FLOCKING
 int main() 
 { 
+#ifdef QUADTREE_FLOCKING
+    nrPoints = 500;
+#endif 
+
     // Initialise GLFW
     glewExperimental = true; // Needed for core profile
     if (!glfwInit())
@@ -36,7 +40,7 @@ int main()
     glfwWindowHint(GLFW_SAMPLES, 4); // 4x antialiasing
 
     // Open a window and create its OpenGL context
-    GLFWwindow* window = glfwCreateWindow(w_width, w_height, "QuadTree", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(w_width+500, w_height, "QuadTree", NULL, NULL);
     glfwMakeContextCurrent(window); // Initialize GLEW
 
     GLenum err = glewInit();
@@ -106,12 +110,11 @@ int main()
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        
         displayFPS(window, frameCount, previousTime);
         glfwSwapBuffers(window);
         glfwPollEvents();
         ImGui::EndFrame();
-       // glfwSwapInterval(0);
+        //glfwSwapInterval(0);
 
     }
     while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS &&

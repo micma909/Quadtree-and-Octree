@@ -6,13 +6,6 @@
 #include "Util.h"
 // TODO:
 
-// 0. First priority: make Boid LOGIC work without QuadTree (Naive Method)
-// 1. Second priority: rewrite as QT method
-
-// 2. once boid system works -> rewrite as data oriented
-// 3. change quadtree to use either GLMT or GLM or Eigen (some generic linalg library)
-// 4. fix potential issues with 
-
 class Boid
 {
 public: 
@@ -155,17 +148,34 @@ private:
 
 };
 
-static void drawPoint(glm::vec2& position, float radius, glm::vec4& color)
+static void drawPoint(glm::vec2& position, glm::vec2& velocity, float radius, glm::vec4& color)
 {
 	glColor4f(color.r, color.g, color.b, color.a);
-	glPointSize(radius);
+	glm::vec2 vel = glm::normalize(velocity);
+	glm::vec2 corner1;
+	corner1.x = vel.y;
+	corner1.y = -vel.x;
+	glm::vec2 corner2;
+	corner2.x = -vel.y;
+	corner2.y = vel.x;
 
-	GLfloat pointVert[] = { position[0], position[1] };
+	corner1 = glm::normalize(corner1) - vel*0.5f;
+	corner2 = glm::normalize(corner2) - vel*0.5f;
+	corner1 *= radius;
+	corner2 *= radius;
+	GLfloat lineVertices[] =
+	{
+		position[0] + vel.x * radius, position[1] + vel.y * radius , 0,
+		position[0] + corner1.x*0.5, position[1] + corner1.y * 0.5, 0,
+		position[0], position[1], 0,
+		position[0] + corner2.x * 0.5, position[1] + corner2.y * 0.5, 0,
+		position[0] + vel.x * radius, position[1] + vel.y * radius, 0
+	};
+
 	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(2, GL_FLOAT, 0, pointVert);
-	glDrawArrays(GL_POINTS, 0, 1);
+	glVertexPointer(3, GL_FLOAT, 0, lineVertices);
+	glDrawArrays(GL_LINE_STRIP, 0, 5);
 	glDisableClientState(GL_VERTEX_ARRAY);
-
 }
 
 static void drawBoid(Boid* boid)

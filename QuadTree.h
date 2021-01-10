@@ -1,38 +1,21 @@
 #pragma once
 #include <vector>
 #include <cassert>
-
+#include <unordered_map>
+#include <any>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 using namespace glm;
 
-// Notes:
-class Point
-{
-public:
-	Point(float x, float y, float vx = 0, float vy = 0, float r = 0) :
-		x(x),
-		y(y),
-		vx(vx),
-		vy(vy),
-		r(r),
-		ax(0), 
-		ay(0), 
-		collision(false)
-	{}
+//typedef glm::vec2 Point;
 
-	float x;
-	float y;
-	float vx;
-	float vy;
-	float ax;
-	float ay;
-	float r;
-	bool collision;
-	float speed;
-	float color;
+struct Point
+{
+	Point(float x, float y, std::any d = nullptr) : pos(x, y), data(d){}
+	glm::vec2 pos;
+	std::any data;
 };
 
 
@@ -46,17 +29,10 @@ public:
 	float w; 
 	float h;
 
-	bool contains(Point p)
+	bool contains(glm::vec2 p)
 	{
-		// is within ? : 
-		return (p.x > x - w && // center - width
-				p.x < x + w && // center + width
-				p.y > y - h && // center - height
-				p.y < y + h);  // center + height
-		
-	    // math:
-		// x - w < x < x + w
-		// y - h < y < y + h
+		return (p.x >= x - w && p.x <= x + w && 
+				p.y >= y - h && p.y <= y + h); 
 	}
 
 	bool intersects(Rectangle range)
@@ -86,31 +62,27 @@ static void drawBounds(Rectangle b)
 	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
-static void drawPoints(std::vector<Point>* points, float r, float g, float b, float a)
+static void drawPoints(std::vector<Point>& points, 
+	std::vector<glm::vec2>& velocities, 
+	std::vector<float>& radiuses,
+	std::vector<glm::vec4>& colors)
 {
-	for (auto& p : *points)
+	for (int i = 0; i < points.size(); i++)
 	{
-		glPointSize(p.r);
+		glPointSize(radiuses[i]);
+		glColor4f(colors[i].r, colors[i].g, colors[i].b, colors[i].a);
 		
-		if (p.collision)
-			glColor4f(p.color, 1.0f - p.color, 0, 1);
-		else
-			glColor4f(r, g, b, a);
-	
-		glColor4f(r, g - p.color * 0.9f, b, a);
-		
-		GLfloat pointVert[] = { p.x, p.y };
+		GLfloat pointVert[] = { points[i].pos.x, points[i].pos.y };
 		glEnableClientState(GL_VERTEX_ARRAY);
 		glVertexPointer(2, GL_FLOAT, 0, pointVert);
 		glDrawArrays(GL_POINTS, 0, 1);
 		glDisableClientState(GL_VERTEX_ARRAY);
 
-		glColor4f(r, g, b, 0.5f);
-		
+		glm::vec2 vel = glm::normalize(velocities[i]);
 		GLfloat lineVertices[] =
 		{
-			p.x, p.y, 0,
-			p.x + p.vx*10.f, p.y + p.vy * 10.f, 0
+			points[i].pos.x, points[i].pos.y, 0,
+			points[i].pos.x + vel.x*5.f, points[i].pos.y + vel.y* 5.f, 0
 		};
 		
 		glEnableClientState(GL_VERTEX_ARRAY);
@@ -126,9 +98,10 @@ static void drawPoints(std::vector<Point*>* points, float r, float g, float b, f
 	glColor4f(r, g, b, a);
 	for (auto& p : *points)
 	{
-		glPointSize(p->r);
+		//glPointSize(p->r);
+		glPointSize(2.0f);
 
-		GLfloat pointVert[] = { p->x, p->y };
+		GLfloat pointVert[] = { p->pos.x, p->pos.y };
 		glEnableClientState(GL_VERTEX_ARRAY);
 		glVertexPointer(2, GL_FLOAT, 0, pointVert);
 		glDrawArrays(GL_POINTS, 0, 1);
@@ -243,10 +216,10 @@ public:
 
 	bool insert(Point* p)
 	{
-		//if(divided && m_points.size() != 0)
-		//	tryDelegatePoints();
+		if(divided && m_points.size() != 0)
+			tryDelegatePoints();
 
-		if (!boundary.contains(*p))
+		if (!boundary.contains(p->pos))
 			return false;
 		
 		if (m_points.size() < capacity)
@@ -271,7 +244,8 @@ public:
 				return true;
 			else
 			{
-				m_points.push_back(p);
+				// precicely on the edge!
+				north_west->m_points.push_back(p);
 				return true;
 			}
 		}
@@ -320,7 +294,7 @@ public:
 
 			for (int i = 0; i < m_points.size(); i++)
 			{
-				if (range.contains(*m_points[i]))
+				if (range.contains(m_points[i]->pos))
 				{
 					result->push_back(m_points[i]);
 				}
@@ -333,13 +307,6 @@ public:
 	int totalInserted()
 	{
 		int total = m_points.size();
-
-		if (divided && total != 0)
-		{
-			int a; 
-			a = 1;
-		}
-
 		if (divided)
 		{
 			total += north_west->totalInserted();
@@ -366,7 +333,10 @@ public:
 
 		if (m_points.size())
 		{
-			drawQuad(boundary, 0.0f, 0.8f, 1.0f, 0.05f);
+			if (divided)
+				drawQuad(boundary, 1.0f, 0.0f, 0.0f, 0.3f);
+			else
+				drawQuad(boundary, 0.0f, 0.8f, 1.0f, 0.05f);
 		}
 	}
 
@@ -383,4 +353,7 @@ private:
 	QuadTree* north_east;
 	QuadTree* south_west;
 	QuadTree* south_east;
+
+
+
 };
