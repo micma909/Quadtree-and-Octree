@@ -9,15 +9,13 @@
 #include <glm/glm.hpp>
 using namespace glm;
 
-//typedef glm::vec2 Point;
-
 struct Point
 {
+	Point() : pos(0,0), data(nullptr){}
 	Point(float x, float y, std::any d = nullptr) : pos(x, y), data(d){}
 	glm::vec2 pos;
 	std::any data;
 };
-
 
 class Rectangle
 {
@@ -29,10 +27,10 @@ public:
 	float w; 
 	float h;
 
-	bool contains(glm::vec2 p)
+	bool contains(glm::vec2 p, float eps = 0.f)
 	{
-		return (p.x >= x - w && p.x <= x + w && 
-				p.y >= y - h && p.y <= y + h); 
+		return (p.x + eps >= x - w && p.x + eps <= x + w &&
+				p.y + eps >= y - h && p.y + eps <= y + h);
 	}
 
 	bool intersects(Rectangle range)
@@ -156,7 +154,11 @@ static int g_count = 0;
 class QuadTree
 {
 public:
-	QuadTree(Rectangle boundary, int n) : boundary(boundary), capacity(n), divided(false), level(0)
+	QuadTree(Rectangle boundary, int n) : boundary(boundary), capacity(n), divided(false), level(0),
+		north_west(nullptr),
+		north_east(nullptr),
+		south_west(nullptr),
+		south_east(nullptr)
 	{}
 
 	void subdivide()
@@ -165,6 +167,11 @@ public:
 		int y = boundary.y;
 		int w = boundary.w;
 		int h = boundary.h;
+
+		allBounds.push_back(glm::vec2(x - w, y));
+		allBounds.push_back(glm::vec2(x + w, y));
+		allBounds.push_back(glm::vec2(x, y + h));
+		allBounds.push_back(glm::vec2(x, y - h));
 
 		Rectangle ne(x + w / 2, y - h / 2, w / 2,h / 2);
 		north_east = new QuadTree(ne, capacity);
@@ -185,11 +192,11 @@ public:
 		south_east->level = this->level + 1;
 		south_west->level = this->level + 1;
 
-		tryDelegatePoints();
+		delegateToLeafNodes();
 		capacity = 0;
 	}
 
-	void tryDelegatePoints()
+	void delegateToLeafNodes()
 	{
 		if (!divided)
 			return;
@@ -211,15 +218,16 @@ public:
 				size = m_points.size();
 			}
 		}
-		m_points.clear(); // not sure about this?
+		//m_points.clear(); // not sure about this?
 	}
+	
 
-	bool insert(Point* p)
+	bool insert(Point* p, float eps = 0.f)
 	{
-		if(divided && m_points.size() != 0)
-			tryDelegatePoints();
+		//if(divided && m_points.size() != 0)
+		//	delegateToLeafNodes();
 
-		if (!boundary.contains(p->pos))
+		if (!boundary.contains(p->pos, eps))
 			return false;
 		
 		if (m_points.size() < capacity)
@@ -234,18 +242,14 @@ public:
 				subdivide();
 			}
 
-			if (north_west->insert(p))
-				return true;
-			else if (north_east->insert(p))
-				return true;
-			else if (south_west->insert(p))
-				return true;
-			else if (south_east->insert(p))
+			if (north_west->insert(p) ||
+				north_east->insert(p) ||
+				south_west->insert(p) ||
+				south_east->insert(p)) 
 				return true;
 			else
 			{
-				// precicely on the edge!
-				north_west->m_points.push_back(p);
+				m_points.push_back(p);
 				return true;
 			}
 		}
@@ -269,9 +273,19 @@ public:
 			delete north_east;
 			delete south_west;
 			delete south_east;
+
+
+			north_west = nullptr;
+			north_east = nullptr;
+			south_west = nullptr;
+			south_east = nullptr;
+
 			divided = false;
 			capacity = newCapacity;
 		}
+
+		if(allBounds.size())
+			allBounds.clear();
 	}
 
 	void query(Rectangle range, std::vector<Point*>* result)
@@ -304,16 +318,23 @@ public:
 		return;
 	}
 
+	void GetBoundsLineSegments(std::vector<glm::vec2>& lines)
+	{
+		lines = allBounds;
+	}
+
 	int totalInserted()
 	{
 		int total = m_points.size();
-		if (divided)
-		{
+
+		if (north_west != nullptr)
 			total += north_west->totalInserted();
+		if (north_east != nullptr)
 			total += north_east->totalInserted();
+		if (south_west != nullptr)
 			total += south_west->totalInserted();
+		if (south_east != nullptr)
 			total += south_east->totalInserted();
-		}
 		
 		return total;
 	}
@@ -354,6 +375,6 @@ private:
 	QuadTree* south_west;
 	QuadTree* south_east;
 
-
+	inline static std::vector<glm::vec2> allBounds{};
 
 };

@@ -17,26 +17,6 @@ public:
 		, window(window)
 	{}
 
-	void sum(glm::vec2& sum, glm::vec2& other, int& count, float distance, float radius)
-	{
-		if (distance < radius)
-		{
-			sum += other;
-			count++;
-		}
-	}
-
-	void computeAvgForce(glm::vec2& force, glm::vec2& velocity, int& count, float maxSpeed, float maxForce)
-	{
-		force /= count;
-		if (glm::length(force) > 0)
-			force = glm::normalize(force) * maxSpeed;
-		force -= velocity;
-		if (glm::length(force) > alignmentMaxForce)
-			force = glm::normalize(force) * maxForce;
-	}
-
-	
 	void data_flocking_naive()
 	{
 		glm::vec2 alignment(0.f, 0.f);
@@ -129,16 +109,15 @@ public:
 		glm::vec2 alignment(0.f, 0.f);
 		glm::vec2 cohesion(0.f, 0.f);
 		glm::vec2 separation(0.f, 0.f);
+		glm::vec2 avoidance(0.f, 0.f);
+
 		int alignmentCount = 0;
 		int cohesionCount = 0;
 		int separationCount = 0;
 
 		std::vector<Point*> nearBoids;
-		//separationMaxForce = 1.6f;
-
 		for (int i = 0; i < points.size(); i++)
 		{
-			glm::vec2 avoidance(0.f, 0.f); // non-avg for now!
 			BoidData& thisBoidsData = getBoidData(points[i].data);
 			bool hunterDetected = false;
 			ppAvoidance[i] *= 0.f;
@@ -149,8 +128,7 @@ public:
 			if (thisBoidsData.behaviorType == Behavior::Boid)
 			{
 				glm::vec2& p1 = points[i].pos;
-				//float maxRadius = std::max(alignmentRadius, std::max(cohesionRadius, separationRadius));
-				glm::vec2 offsetFov= p1;
+				glm::vec2 offsetFov = p1;
 
 				if(glm::length(velocities[i]) > 0)
 					offsetFov = p1 + glm::normalize(velocities[i]) * queryRadius;
@@ -177,7 +155,7 @@ public:
 				for (int j = 0; j < nearBoids.size(); j++)
 				{
 					float d = distance(p1, nearBoids[j]->pos);
-					if (d < 0.1f)
+					if (d < 0.001f)
 						continue;
 
 					BoidData& otherBoidData = getBoidData(nearBoids[j]->data);
@@ -208,21 +186,16 @@ public:
 					}
 					else if(otherBoidData.behaviorType == Behavior::Hunter && addHunters)
 					{
-						//if (d < this->separationRadius && separationOn )
-						{
-							glm::vec2 diff = points[i].pos - nearBoids[j]->pos;
-							diff /= d;
+						glm::vec2 diff = points[i].pos - nearBoids[j]->pos;
+						diff /= d;
 
-							//avoidance = diff;
-							ppColor[i] = glm::vec4(0, 1, 1, 1);
-							ppAvoidance[i] = 4.f*diff;
-							ppSeparationForce[i] = 2;
-							ppRadius[i] = 5.0f;
-							alignment *= 0;
-							cohesion *= 0;
-							hunterDetected = true;
-						}
-
+						ppColor[i] = glm::vec4(0, 1, 1, 1);
+						ppAvoidance[i] = 4.f*diff;
+						ppSeparationForce[i] = 2;
+						ppRadius[i] = 5.0f;
+						alignment *= 0;
+						cohesion *= 0;
+						hunterDetected = true;
 					}
 				}
 			}
@@ -247,7 +220,6 @@ public:
 
 			if (!hunterDetected)
 			{
-
 				ppSeparationForce[i] -= 0.5f;
 				ppSeparationForce[i] = std::max(ppSeparationForce[i], separationMaxForce);
 			}
@@ -255,38 +227,27 @@ public:
 			if (alignmentCount > 0 && alignmentOn)
 			{
 				alignment /= alignmentCount;
-				if (glm::length(alignment) > 0)
-					alignment = glm::normalize(alignment) * alignmentMaxSpeed;
+				limit(alignment, alignmentMaxSpeed);
 				alignment -= velocities[i];
-				if (glm::length(alignment) > alignmentMaxForce)
-				{
-					alignment = glm::normalize(alignment) * alignmentMaxForce;
-				}
+				limit(alignment, alignmentMaxForce);
 			}
 			
 			if (cohesionCount > 0 && cohesionOn)
 			{
 				cohesion /= cohesionCount;
 				cohesion -= points[i].pos;
-			
-				if (glm::length(cohesion) > 0)
-					cohesion = glm::normalize(cohesion) * cohesionMaxSpeed;
+				limit(cohesion, cohesionMaxSpeed);
 				cohesion -= velocities[i];
-	
-				if (glm::length(cohesion) > cohesionMaxForce)
-					cohesion = glm::normalize(cohesion) * cohesionMaxForce;
+				limit(cohesion, cohesionMaxForce);
 			}
 
 			if (separationCount > 0 && separationOn)
 			{
 				separation /= separationCount;
-				if (glm::length(separation) > 0)
-					separation = glm::normalize(separation) * separationMaxSpeed;
+				limit(separation, separationMaxSpeed);
 				separation -= velocities[i];
-				if (glm::length(separation) > ppSeparationForce[i])
-					separation = glm::normalize(separation) * ppSeparationForce[i];
+				limit(separation, ppSeparationForce[i]);
 			}
-
 
 			if ( thisBoidsData.behaviorType == Behavior::Hunter)
 			{
@@ -313,17 +274,13 @@ public:
 			alignment *= 0.f;
 			cohesion *= 0.f;
 			separation *= 0.f;
-
 			avoidance *= 0.f;
-
 			alignmentCount = 0;
 			cohesionCount = 0;
 			separationCount = 0;
-
 			nearBoids.clear();
 		}	
 	}
-
 
 	void Setup()
 	{

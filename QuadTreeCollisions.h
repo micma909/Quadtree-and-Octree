@@ -19,6 +19,8 @@ public:
 
         qt = new QuadTree(boundary, this->treeLevelCapacity);
 
+        points.resize(nrPoints);
+        positions.resize(nrPoints);
         velocities.resize(nrPoints);
         radiuses.resize(nrPoints);
         speeds.resize(nrPoints);
@@ -26,13 +28,14 @@ public:
 
         for (int i = 0; i < nrPoints; i++)
         {
-            positions.push_back({ RandomFloat(0, w_width), RandomFloat(0, w_height) / 32 + (w_height / 2) });
-            velocities[i] = glm::vec2(-1,0);
-            radiuses[i] = RandomFloat(4, 6);
+            points[i] = { RandomFloat(0, w_width), RandomFloat(0, w_height) / 32 + (w_height / 2) };
+            positions[i] = &points[i].pos;
+            velocities[i] = glm::vec2(-0.1f,0);
+            radiuses[i] = 10.f;// RandomFloat(4, 6);
             speeds[i] = RandomFloat(1, 2);
             colors[i] = glm::vec4(1.f,0.8f,0.f,1.f);
         
-            qt->insert(&positions[i]);
+            qt->insert(&points[i]);
         }
         this->oldState_left = GLFW_RELEASE;
         this->oldState_right = GLFW_RELEASE;
@@ -54,6 +57,10 @@ public:
         this->runQuad = false;
         this->wrap = true;
         this->pauseTime = false;
+
+        // setup opengl
+
+
 	}
 
     void Run()
@@ -65,7 +72,7 @@ public:
             NaiveCollision();
             QuadTreeCollision();
         }
-        DebugDraw();
+        //DebugDraw();
     }
 
     void UserInputs()
@@ -74,17 +81,19 @@ public:
         int newState_left = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
         if (newState_left == GLFW_PRESS)
         {
-            double xpos, ypos;
-            glfwGetCursorPos(window, &xpos, &ypos);
+            // TODO fix this 
 
-            positions.push_back(Point(xpos, w_height - ypos));
-            //positions.push_back({ rand() % w_width, rand() % w_height / 32 + (w_height / 2) });
-            velocities.push_back(glm::vec2(-1, 0));
-            radiuses.push_back(4.0f);//RandomFloat(2, 10);
-            speeds.push_back(RandomFloat(1, 2));
-            colors.push_back(glm::vec4(0.f, 1.0f, 1.f, 1.f));
-
-            clicks++;
+            //double xpos, ypos;
+            //glfwGetCursorPos(window, &xpos, &ypos);
+            //
+            //points.push_back(Point(xpos, w_height - ypos));
+            ////positions.push_back({ rand() % w_width, rand() % w_height / 32 + (w_height / 2) });
+            //velocities.push_back(glm::vec2(-1, 0));
+            //radiuses.push_back(4.0f);//RandomFloat(2, 10);
+            //speeds.push_back(RandomFloat(1, 2));
+            //colors.push_back(glm::vec4(0.f, 1.0f, 1.f, 1.f));
+            //
+            //clicks++;
 
         }
         oldState_left = newState_left;
@@ -176,15 +185,15 @@ public:
     {
         qt->clear(treeLevelCapacity);
 
-        for (int i = 0; i < positions.size(); i++)
+        for (int i = 0; i < points.size(); i++)
         {       
-            positions[i].pos += velocities[i] * speeds[i];
-            borderCheck(&positions[i].pos, &velocities[i], w_width, w_height, wrap);
+            points[i].pos += velocities[i] * speeds[i];
+            borderCheck(&points[i].pos, &velocities[i], w_width, w_height, wrap);
 
-            bool success = qt->insert(&positions[i]);
+            bool success = qt->insert(&points[i]);
             if (!success)
             {
-                failures.push_back(positions[i]);
+                failures.push_back(points[i]);
             }
         }
     }
@@ -196,18 +205,18 @@ public:
         {
             nrOfChecks = 0;
             // check collision naive
-            for (int i = 0; i < positions.size(); i++)
+            for (int i = 0; i < points.size(); i++)
             {
-                Point* p1 = &positions[i];
+                Point* p1 = &points[i];
 
                 colors[i].g += 0.05f;
                 colors[i].g = std::min(0.8f, colors[i].g);
 
-                for (int j = 0; j < positions.size(); j++)
+                for (int j = 0; j < points.size(); j++)
                 {
                     nrOfChecks++;
 
-                    Point* p2 = &positions[j];
+                    Point* p2 = &points[j];
 
                     float dx = p1->pos.x - p2->pos.x;
                     float dy = p1->pos.y - p2->pos.y;
@@ -235,9 +244,9 @@ public:
         {
             nrOfChecks = 0;
             std::vector<Point*> collidable;
-            for (int i = 1; i < positions.size(); i++)
+            for (int i = 1; i < points.size(); i++)
             {
-                Point* p1 = &positions[i];
+                Point* p1 = &points[i];
                 auto radius = radiuses[i];
                 Rectangle pBounds(p1->pos.x, p1->pos.y, radius * 0.5, radius * 0.5);
 
@@ -274,6 +283,23 @@ public:
         }
     }
 
+    std::vector<glm::vec2> GetQTPoints()
+    {   
+        std::vector<glm::vec2> allPoints;
+        
+        for (int i = 0; i < points.size(); i++)
+        {
+            allPoints.push_back(points[i].pos);
+        }
+
+        return allPoints;
+    }
+
+    QuadTree* GetQuadTree()
+    {
+        return qt;
+    }
+
     void DebugDraw()
     {
         // display avg number of queries
@@ -290,30 +316,30 @@ public:
         }
       
 
-        for (int k = 0; k < failures.size(); k++)
-        {
-            Rectangle fail(failures[k].pos.x, failures[k].pos.y, 5, 5);
-            drawRange(fail, 1, 1, 1, 1);
-        }
-
-        Rectangle search(xDrag, yDrag, xw, yh);
-
-       // if (doSearch)
-        {
-            qt->query(search, &foundPoints);
-            g_count = 0;
-            doSearch = false;
-        }
-
-        if (flocking || runQuad)
-            qt->drawGrid();
-        drawPoints(positions, velocities, radiuses, colors);
-
-        // searchrange
-        drawRange(search, 0.f, 1.f, 0.f, 1.0f);
-        drawQuad(search, 0.f, 0.f, 0.f, 0.55f);
-        drawPoints(&foundPoints, 0.f, 1.f, 1.f, 1.0f);
-        foundPoints.clear();
+      //  for (int k = 0; k < failures.size(); k++)
+      //  {
+      //      Rectangle fail(failures[k].pos.x, failures[k].pos.y, 5, 5);
+      //      drawRange(fail, 1, 1, 1, 1);
+      //  }
+      //
+      //  Rectangle search(xDrag, yDrag, xw, yh);
+      //
+      // // if (doSearch)
+      //  {
+      //      qt->query(search, &foundPoints);
+      //      g_count = 0;
+      //      doSearch = false;
+      //  }
+      //
+      //  if (flocking || runQuad)
+      //      qt->drawGrid();
+      //  drawPoints(points, velocities, radiuses, colors);
+      //
+      //  // searchrange
+      //  drawRange(search, 0.f, 1.f, 0.f, 1.0f);
+      //  drawQuad(search, 0.f, 0.f, 0.f, 0.55f);
+      //  drawPoints(&foundPoints, 0.f, 1.f, 1.f, 1.0f);
+      //  foundPoints.clear();
     }
 
 private:
@@ -321,7 +347,8 @@ private:
 	int w_height;
 	int nrPoints;
 
-    std::vector<Point> positions;
+    std::vector<Point> points;
+    std::vector<glm::vec2*> positions;
     std::vector<glm::vec2> velocities;
     std::vector<float> radiuses;
     std::vector<float> speeds;
@@ -357,4 +384,9 @@ private:
 
     GLFWwindow* window;
     QuadTree* qt;
+
+    // opengl 
+    GLuint vboPoints;
+    GLuint vboLines;
+
 };
