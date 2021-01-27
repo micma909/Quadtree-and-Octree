@@ -29,8 +29,8 @@ public:
 
 	bool contains(glm::vec2 p, float eps = 0.f)
 	{
-		return (p.x + eps >= x - w && p.x + eps <= x + w &&
-				p.y + eps >= y - h && p.y + eps <= y + h);
+		return (p.x >= x + eps - w && p.x <= x + eps + w && 
+				p.y >= y + eps - h && p.y <= y + eps + h); 
 	}
 
 	bool intersects(Rectangle range)
@@ -224,8 +224,8 @@ public:
 
 	bool insert(Point* p, float eps = 0.f)
 	{
-		//if(divided && m_points.size() != 0)
-		//	delegateToLeafNodes();
+		if(divided && m_points.size() != 0)
+			delegateToLeafNodes();
 
 		if (!boundary.contains(p->pos, eps))
 			return false;
@@ -274,12 +274,6 @@ public:
 			delete south_west;
 			delete south_east;
 
-
-			north_west = nullptr;
-			north_east = nullptr;
-			south_west = nullptr;
-			south_east = nullptr;
-
 			divided = false;
 			capacity = newCapacity;
 		}
@@ -296,7 +290,7 @@ public:
 			return;
 		else
 		{
-			g_count++;
+			g_count++; 
 
 			if (divided)
 			{
@@ -310,10 +304,9 @@ public:
 			{
 				if (range.contains(m_points[i]->pos))
 				{
-					result->push_back(m_points[i]);
+ 					result->push_back(m_points[i]);
 				}
 			}
-			
 		}
 		return;
 	}

@@ -1,9 +1,9 @@
 #version 420 core
 
 layout(location = 0) in vec2 position;
-layout(location = 0) in vec3 color;
+layout(location = 1) in vec4 color;
 
-out vec3 fragmentColor;
+out vec4 fragmentColor;
 
 uniform mat4 MVP;
 

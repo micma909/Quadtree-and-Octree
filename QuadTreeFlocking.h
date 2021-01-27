@@ -142,14 +142,7 @@ public:
 				ppColor[i].w = std::max(0.2f, ppColor[i].w);
 				ppRadius[i] -= 0.05f;
 				ppRadius[i] = std::max(2.5f, ppRadius[i]);
-				//if (i < 3)
-				//{
-				//	drawRange(searchArea, queryRadius, 1, 1, 0.1f);
-				//	//glm::vec2 a = p1 + glm::normalize(velocities[i])*25.f;
-				//
-				//	drawHollowCircle(offsetFov.x, offsetFov.y, alignmentRadius);
-				//	
-				//}
+
 				qt->query(searchArea, &nearBoids);
 
 				for (int j = 0; j < nearBoids.size(); j++)
@@ -282,6 +275,18 @@ public:
 		}	
 	}
 
+	std::vector<glm::vec2> GetQTPoints()
+	{
+		std::vector<glm::vec2> allPoints;
+
+		for (int i = 0; i < points.size(); i++)
+		{
+			allPoints.push_back(points[i].pos);
+		}
+
+		return allPoints;
+	}
+
 	void Setup()
 	{
 #ifndef DATA_ORIENTED
@@ -340,10 +345,76 @@ public:
 			boidCount++;
 		}
 
-		
+		// opengl stuff
+		Shader shader("QuadTree/shaders/debug.vert", "QuadTree/shaders/debug.frag");
+		program = shader.createProgram();
+
+		positions = GetQTPoints();
+
+		glGenBuffers(1, &vboPositions);
+		glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
+
+		glGenBuffers(1, &vboColors);
+		glBindBuffer(GL_ARRAY_BUFFER, vboColors);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * ppColor.size(), &ppColor[0].x, GL_DYNAMIC_DRAW);
+
+		std::vector<glm::vec2> lines;
+		qt->GetBoundsLineSegments(lines);
+
+		mvp = glm::ortho(0.f, static_cast<float>(w_width), 0.f, static_cast<float>(w_height), 0.f, 100.f);
+		mvpId = glGetUniformLocation(program, "MVP");
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 #endif
 	}
+
+	void Draw()
+	{
+		glUseProgram(program);
+		glUniformMatrix4fv(mvpId, 1, GL_FALSE, &mvp[0][0]);
+
+		glEnableVertexAttribArray(1);
+		glBindBuffer(GL_ARRAY_BUFFER, vboColors);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * ppColor.size(), &ppColor[0].x, GL_DYNAMIC_DRAW);
+
+		glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+		positions = GetQTPoints();
+		if (positions.size())
+		{
+			glEnableVertexAttribArray(0);
+			glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
+			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+			glPointSize(3);
+			glDrawArrays(GL_POINTS, 0, positions.size());
+
+			positions.clear();
+			lines.clear();
+			qt->GetBoundsLineSegments(lines);
+			if (lines.size())
+			{
+				glDisableVertexAttribArray(1);
+				glVertexAttrib4f(1, 0.15f, 0.15f, 0.15f, 1.f);
+
+				GLuint vboLines;
+				glGenBuffers(1, &vboLines);
+				glBindBuffer(GL_ARRAY_BUFFER, vboLines);
+				glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * lines.size(), &lines[0].x, GL_DYNAMIC_DRAW);
+
+				glBindBuffer(GL_ARRAY_BUFFER, vboLines);
+				glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+				glDrawArrays(GL_LINES, 0, lines.size());
+				glDisableVertexAttribArray(0);
+				glDisableVertexAttribArray(1);
+			}
+		}
+	}
+
 
 	void Run()
 	{
@@ -479,7 +550,7 @@ public:
 		{
 			ImGui::SameLine();
 			ImGui::Checkbox("Draw QuadTree", &drawQuadTree);
-			ImGui::Checkbox("Add Hunters", &addHunters);
+			ImGui::Checkbox("Activate Hunters", &addHunters);
 		}
 		
 		//ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
@@ -562,4 +633,18 @@ private:
 
 	GLFWwindow* window;
 	QuadTree* qt;
+
+	// opengl and draw
+	GLuint vboPositions;
+	GLuint vboColors;
+	GLuint vboLines;
+	GLuint vboFoundPoints;
+
+	std::vector<glm::vec2> positions;
+	std::vector<glm::vec2> lines;
+	std::vector<glm::vec2> rangeLines;
+	glm::mat4 mvp;
+	GLuint mvpId;
+
+	GLuint program;
 };

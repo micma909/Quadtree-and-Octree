@@ -27,7 +27,7 @@
 
 static const int w_width = 1000;
 static const int w_height = 1000;
-static int nrPoints = 100;
+static int nrPoints = 500;
 
 //#define QUADTREE_COLLISIONS
 //#define QUADTREE_FLOCKING
@@ -153,18 +153,17 @@ int main()
     GLFWwindow* window = glfwCreateWindow(w_width, w_height, "QuadTree", NULL, NULL);
     glfwMakeContextCurrent(window); // Initialize GLEW
 
-
-    QTCollisions quadTreeCollisions(window, w_width, w_height, nrPoints);
-    quadTreeCollisions.Setup();
-
     GLenum err = glewInit();
     if (GLEW_OK != err)
           std::cerr << "Error: " << glewGetErrorString(err) << std::endl;
     std::cerr << "Status: Using GLEW " << glewGetString(GLEW_VERSION) << std::endl;
 
-    //// newer opengl ///
-    Shader shader("QuadTree/shaders/debug.vert", "QuadTree/shaders/debug.frag");
-    GLuint program = shader.createProgram();
+    //QTCollisions quadTreeCollisions(window, w_width, w_height, nrPoints);
+    //quadTreeCollisions.Setup();
+
+    QTFlocking quadTreeFlocking(window, w_width, w_height, nrPoints);
+    quadTreeFlocking.Setup();
+
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -185,75 +184,18 @@ int main()
     double previousTime = glfwGetTime();
     bool show_demo_window = false;
 
-    std::vector<glm::vec2> points = quadTreeCollisions.GetQTPoints();
-
-    std::vector<glm::vec2> lines;
-    quadTreeCollisions.GetQuadTree()->GetBoundsLineSegments(lines);
-
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-        
-    GLuint vboPoints;
-    glGenBuffers(1, &vboPoints);
-    glBindBuffer(GL_ARRAY_BUFFER, vboPoints);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * points.size(), &points[0].x, GL_DYNAMIC_DRAW);
-
-    glm::mat4 Projection = glm::ortho(0.f, static_cast<float>(w_width),  0.f, static_cast<float>(w_height), 0.f, 100.f);
-    glm::mat4 View = glm::lookAt
-    (
-        glm::vec3(0, 0, -1), // -1 in Z
-        glm::vec3(0, 0, 0), // look at origin
-        glm::vec3(0, 1, 0)  // y-ax is up
-    );
-    
-    glm::mat4 Model = glm::mat4(1.f);
-    glm::mat4 mvp = Projection; //* View * Model;
-
-    GLuint mvpId = glGetUniformLocation(program, "MVP");
-
     glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
     do {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
         glDisable(GL_CULL_FACE);
 
-        glUseProgram(program);
-        glUniformMatrix4fv(mvpId, 1, GL_FALSE, &mvp[0][0]);
-        
-        //ImGui::ShowDemoWindow(&show_demo_window);
-
-        glEnableVertexAttribArray(0);
-        glBindBuffer(GL_ARRAY_BUFFER, vboPoints);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-        glPointSize(3);
-        glDrawArrays(GL_POINTS, 0, points.size());
-
-        quadTreeCollisions.Run();
-        
-        std::cout << nrPoints << " " << quadTreeCollisions.GetQuadTree()->totalInserted() << std::endl;
-
-        // cleanup & reuppload 
-        points.clear();
-
-        points = quadTreeCollisions.GetQTPoints();
-        glBindBuffer(GL_ARRAY_BUFFER, vboPoints);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * points.size(), &points[0].x, GL_STATIC_DRAW);
-
-        lines.clear();
-        quadTreeCollisions.GetQuadTree()->GetBoundsLineSegments(lines);
-        
-        GLuint vboLines;
-        glGenBuffers(1, &vboLines);
-        glBindBuffer(GL_ARRAY_BUFFER, vboLines);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * lines.size(), &lines[0].x, GL_STATIC_DRAW);
-        
-        glBindBuffer(GL_ARRAY_BUFFER, vboLines);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-        glDrawArrays(GL_LINES, 0, lines.size());
+       // quadTreeCollisions.Run();
+        quadTreeFlocking.Run();
+        quadTreeFlocking.Draw();
+        quadTreeFlocking.ImGuiMenu();
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

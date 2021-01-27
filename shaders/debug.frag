@@ -1,6 +1,6 @@
-#version 150 core
+#version 420 core
 
-in vec3 fragmentColor;
+in vec4 fragmentColor;
 out vec4 outColor;
 
 void main()

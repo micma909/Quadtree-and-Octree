@@ -20,7 +20,6 @@ public:
         qt = new QuadTree(boundary, this->treeLevelCapacity);
 
         points.resize(nrPoints);
-        positions.resize(nrPoints);
         velocities.resize(nrPoints);
         radiuses.resize(nrPoints);
         speeds.resize(nrPoints);
@@ -28,18 +27,16 @@ public:
 
         for (int i = 0; i < nrPoints; i++)
         {
-            points[i] = { RandomFloat(0, w_width), RandomFloat(0, w_height) / 32 + (w_height / 2) };
-            positions[i] = &points[i].pos;
-            velocities[i] = glm::vec2(-0.1f,0);
+            points[i] = { RandomFloat(0, w_width), RandomFloat(0, w_height) / 32 + (w_height / 2), i };
+            velocities[i] = glm::vec2(-2.5f,0);
             radiuses[i] = 10.f;// RandomFloat(4, 6);
-            speeds[i] = RandomFloat(1, 2);
-            colors[i] = glm::vec4(1.f,0.8f,0.f,1.f);
+            speeds[i] = RandomFloat(0.2f, 0.5f);
+            colors[i] = glm::vec4(1,0.8f,0.f,1.f);
         
             qt->insert(&points[i]);
         }
         this->oldState_left = GLFW_RELEASE;
         this->oldState_right = GLFW_RELEASE;
-        this->oldFlockingState = GLFW_RELEASE;
         this->oldWrapState = GLFW_RELEASE;
 
         this->xDrag = 0;
@@ -50,7 +47,6 @@ public:
         this->avgCollisions = 0;
         this->countFFF = 0;
 
-        this->flocking = false;
         this->press = false;
         this->doSearch = false;
         this->runNaive = false;
@@ -58,9 +54,28 @@ public:
         this->wrap = true;
         this->pauseTime = false;
 
-        // setup opengl
+        // opengl stuff
+        Shader shader("QuadTree/shaders/debug.vert", "QuadTree/shaders/debug.frag");
+        program = shader.createProgram();
 
+        positions = GetQTPoints();
 
+        glGenBuffers(1, &vboPositions);
+        glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
+
+        glGenBuffers(1, &vboColors);
+        glBindBuffer(GL_ARRAY_BUFFER, vboColors);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
+
+        std::vector<glm::vec2> lines;
+        qt->GetBoundsLineSegments(lines);
+
+        mvp = glm::ortho(0.f, static_cast<float>(w_width), 0.f, static_cast<float>(w_height), 0.f, 100.f);
+        mvpId = glGetUniformLocation(program, "MVP");
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 
     void Run()
@@ -72,8 +87,103 @@ public:
             NaiveCollision();
             QuadTreeCollision();
         }
-        //DebugDraw();
+        Draw();
     }
+    void Draw()
+    {
+        glUseProgram(program);
+        glUniformMatrix4fv(mvpId, 1, GL_FALSE, &mvp[0][0]);
+
+        glEnableVertexAttribArray(1);
+        glBindBuffer(GL_ARRAY_BUFFER, vboColors);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
+
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+        positions = GetQTPoints();
+
+        glEnableVertexAttribArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    
+        glPointSize(3);
+        glDrawArrays(GL_POINTS, 0, positions.size());
+
+        positions.clear();
+        lines.clear();
+        qt->GetBoundsLineSegments(lines);
+
+        glDisableVertexAttribArray(1);
+        glVertexAttrib4f(1, 0.15f, 0.15f, 0.15f, 1.f);
+
+        GLuint vboLines;
+        glGenBuffers(1, &vboLines);
+        glBindBuffer(GL_ARRAY_BUFFER, vboLines);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * lines.size(), &lines[0].x, GL_DYNAMIC_DRAW);
+
+        glBindBuffer(GL_ARRAY_BUFFER, vboLines);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+        glDrawArrays(GL_LINES, 0, lines.size());
+        glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(1);
+
+        Rectangle search(xDrag, yDrag, xw, yh);
+      
+       // if (doSearch)
+        {
+            std::vector<Point*> foundPoints;
+            qt->query(search, &foundPoints);
+            g_count = 0;
+            doSearch = false;
+
+            for (int i = 0; i < foundPoints.size(); i++)
+            {
+                int index = std::any_cast<int&>(foundPoints[i]->data);
+                foundPositions.push_back(foundPoints[i]->pos);
+            }
+        }
+
+        if (foundPositions.size())
+        {
+            glEnableVertexAttribArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * foundPositions.size(), &foundPositions[0].x, GL_DYNAMIC_DRAW);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+            glVertexAttrib4f(1, 1.f, 1.f, 1.f, 1.f);
+
+            glPointSize(10);
+            glDrawArrays(GL_POINTS, 0, foundPositions.size());
+            glDisableVertexAttribArray(0);
+        }
+        foundPositions.clear();
+
+        int x = search.x;
+        int y = search.y;
+        int w = search.w;
+        int h = search.h;
+        rangeLines.push_back({ x - w, y - h });
+        rangeLines.push_back({ x - w, y + h });
+        rangeLines.push_back({ x + w, y + h });
+        rangeLines.push_back({ x + w, y - h });
+        rangeLines.push_back({ x - w, y - h });
+
+        glEnableVertexAttribArray(0);
+        glVertexAttrib4f(1, 1.f, 1.f, 1.f, 1.f);
+
+        GLuint vboRange;
+        glGenBuffers(1, &vboRange);
+        glBindBuffer(GL_ARRAY_BUFFER, vboRange);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * rangeLines.size(), &rangeLines[0].x, GL_DYNAMIC_DRAW);
+
+        glBindBuffer(GL_ARRAY_BUFFER, vboRange);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+        glDrawArrays(GL_LINE_STRIP, 0, rangeLines.size());
+        glDisableVertexAttribArray(0);
+        rangeLines.clear();
+    }
+
 
     void UserInputs()
     {
@@ -83,17 +193,16 @@ public:
         {
             // TODO fix this 
 
-            //double xpos, ypos;
-            //glfwGetCursorPos(window, &xpos, &ypos);
-            //
-            //points.push_back(Point(xpos, w_height - ypos));
-            ////positions.push_back({ rand() % w_width, rand() % w_height / 32 + (w_height / 2) });
-            //velocities.push_back(glm::vec2(-1, 0));
-            //radiuses.push_back(4.0f);//RandomFloat(2, 10);
-            //speeds.push_back(RandomFloat(1, 2));
-            //colors.push_back(glm::vec4(0.f, 1.0f, 1.f, 1.f));
-            //
-            //clicks++;
+            double xpos, ypos;
+            glfwGetCursorPos(window, &xpos, &ypos);
+            
+            points.push_back(Point(xpos, w_height - ypos));
+            velocities.push_back(glm::vec2(-1, 0));
+            radiuses.push_back(4.0f);//RandomFloat(2, 10);
+            speeds.push_back(RandomFloat(1, 2));
+            colors.push_back(glm::vec4(1, 0.8f, 0.f, 1.f));
+            
+            clicks++;
 
         }
         oldState_left = newState_left;
@@ -104,7 +213,7 @@ public:
         {
             if (!press)
             {
-                foundPoints.clear();
+                rangeLines.clear();
                 glfwGetCursorPos(window, &xDrag, &yDrag);
                 yDrag = w_height - yDrag;
                 press = true;
@@ -138,13 +247,6 @@ public:
             if (treeLevelCapacity <= 0)
                 treeLevelCapacity = 1;
         }
-
-        int flockingState = glfwGetKey(window, GLFW_KEY_F);
-        if (flockingState == GLFW_RELEASE && oldFlockingState == GLFW_PRESS)
-        {
-            flocking = !flocking;
-        }
-        oldFlockingState = flockingState;
 
         int wrapState = glfwGetKey(window, GLFW_KEY_W);
         if (wrapState == GLFW_RELEASE && oldWrapState == GLFW_PRESS)
@@ -200,7 +302,6 @@ public:
 
     void NaiveCollision()
     {
-     
         if (runNaive)
         {
             nrOfChecks = 0;
@@ -225,10 +326,10 @@ public:
 
                     if (i != j && distance * 2.0f < radiuses[i] + radiuses[j])
                     {
-                        velocities[i].x =  dx * 0.1f * speeds[i];
-                        velocities[i].y =  dy * 0.1f * speeds[i];
-                        velocities[j].x = -dx * 0.1f * speeds[j];
-                        velocities[j].y = -dy * 0.1f * speeds[j];
+                        velocities[i].x =  dx * speeds[i];
+                        velocities[i].y =  dy * speeds[i];
+                        velocities[j].x = -dx * speeds[j];
+                        velocities[j].y = -dy * speeds[j];
 
                         colors[i].g = 0.0f;
                         colors[j].g = 0.0f;
@@ -244,11 +345,11 @@ public:
         {
             nrOfChecks = 0;
             std::vector<Point*> collidable;
-            for (int i = 1; i < points.size(); i++)
+            for (int i = 0; i < points.size(); i++)
             {
                 Point* p1 = &points[i];
                 auto radius = radiuses[i];
-                Rectangle pBounds(p1->pos.x, p1->pos.y, radius * 0.5, radius * 0.5);
+                Rectangle pBounds(p1->pos.x, p1->pos.y, radius * 0.5f, radius * 0.5f);
 
                 qt->query(pBounds, &collidable);
 
@@ -262,18 +363,14 @@ public:
                     glm::vec2 diff = p1->pos - collidable[j]->pos;
                     float distance = glm::length(diff);
 
-                    if (distance == 0)
+                    if (distance < 0.001f)
                         continue;
 
                     radius += radiuses[j];
                     if (distance * 2.0f < radius)
                     {
-                        velocities[i] = diff * 0.1f * speeds[i];
-                        velocities[j] = diff * 0.1f * speeds[j];
-                       
-
+                        velocities[i] = diff * speeds[i];                       
                         colors[i].g = 0.0f;
-                        colors[j].g = 0.0f;
 
                         break;
                     }
@@ -314,56 +411,31 @@ public:
                 avgCollisions = 0;
             }
         }
-      
-
-      //  for (int k = 0; k < failures.size(); k++)
-      //  {
-      //      Rectangle fail(failures[k].pos.x, failures[k].pos.y, 5, 5);
-      //      drawRange(fail, 1, 1, 1, 1);
-      //  }
-      //
-      //  Rectangle search(xDrag, yDrag, xw, yh);
-      //
-      // // if (doSearch)
-      //  {
-      //      qt->query(search, &foundPoints);
-      //      g_count = 0;
-      //      doSearch = false;
-      //  }
-      //
-      //  if (flocking || runQuad)
-      //      qt->drawGrid();
-      //  drawPoints(points, velocities, radiuses, colors);
-      //
-      //  // searchrange
-      //  drawRange(search, 0.f, 1.f, 0.f, 1.0f);
-      //  drawQuad(search, 0.f, 0.f, 0.f, 0.55f);
-      //  drawPoints(&foundPoints, 0.f, 1.f, 1.f, 1.0f);
-      //  foundPoints.clear();
     }
 
 private:
+    std::vector<glm::vec2> debugCollidable;
+
 	int w_width;
 	int w_height;
 	int nrPoints;
 
     std::vector<Point> points;
-    std::vector<glm::vec2*> positions;
     std::vector<glm::vec2> velocities;
+    std::vector<glm::vec4> colors;
     std::vector<float> radiuses;
     std::vector<float> speeds;
-    std::vector<glm::vec4> colors;
 
-    std::vector<Point*> foundPoints{};
+    // mostly for debugging
+    std::vector<glm::vec2> foundPositions;
     std::vector<Point> failures{};
 
+    // glfw input 
     int clicks;
     int oldState_left;
     int oldState_right;
-    int oldFlockingState;
     int oldWrapState;
     int oldTimeState;
-
 
     double xDrag, yDrag;
     double xw, yh;
@@ -372,7 +444,6 @@ private:
     int countFFF;
     int nrOfChecks;
 
-    bool flocking;
     bool press;
     bool doSearch;
     bool runNaive;
@@ -385,8 +456,17 @@ private:
     GLFWwindow* window;
     QuadTree* qt;
 
-    // opengl 
-    GLuint vboPoints;
+    // opengl and draw
+    GLuint vboPositions;
+    GLuint vboColors;
     GLuint vboLines;
+    GLuint vboFoundPoints;
 
+    std::vector<glm::vec2> positions;
+    std::vector<glm::vec2> lines;
+    std::vector<glm::vec2> rangeLines;
+    glm::mat4 mvp;
+    GLuint mvpId;
+
+    GLuint program;
 };
