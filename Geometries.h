@@ -1,14 +1,13 @@
 #pragma once
 #include <GL/glew.h>
 
-static const GLfloat gCubeVertexBuffer[] = 
-{
-    -1.0f,-1.0f,-1.0f,
+static const GLfloat g_vertex_buffer_data[] = {
+    -1.0f,-1.0f,-1.0f, // triangle 1 : begin
     -1.0f,-1.0f, 1.0f,
-    -1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f,-1.0f, 
+    -1.0f, 1.0f, 1.0f, // triangle 1 : end
+    1.0f, 1.0f,-1.0f, // triangle 2 : begin
     -1.0f,-1.0f,-1.0f,
-    -1.0f, 1.0f,-1.0f,
+    -1.0f, 1.0f,-1.0f, // triangle 2 : end
     1.0f,-1.0f, 1.0f,
     -1.0f,-1.0f,-1.0f,
     1.0f,-1.0f,-1.0f,
@@ -41,7 +40,7 @@ static const GLfloat gCubeVertexBuffer[] =
     1.0f,-1.0f, 1.0f
 };
 
-static const GLfloat gCubeColorBuffer[] = {
+static const GLfloat g_color_buffer_data[] = {
     0.583f,  0.771f,  0.014f,
     0.609f,  0.115f,  0.436f,
     0.327f,  0.483f,  0.844f,
