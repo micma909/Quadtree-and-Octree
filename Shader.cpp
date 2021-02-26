@@ -155,6 +155,41 @@ GLint Shader::attribute(const std::string &name)
     return location;
 }
 
+/*
+    set uniform variables
+*/
+
+void Shader::setBool(const std::string& name, bool value) {
+    glUniform1i(glGetUniformLocation(program(), name.c_str()), (int)value);
+}
+
+void Shader::setInt(const std::string& name, int value) {
+    glUniform1i(glGetUniformLocation(program(), name.c_str()), value);
+}
+
+void Shader::setFloat(const std::string& name, float value) {
+    glUniform1f(glGetUniformLocation(program(), name.c_str()), value);
+}
+
+void Shader::set3Float(const std::string& name, float v1, float v2, float v3) {
+    glUniform3f(glGetUniformLocation(program(), name.c_str()), v1, v2, v3);
+}
+
+void Shader::set3Float(const std::string& name, glm::vec3 v) {
+    glUniform3f(glGetUniformLocation(program(), name.c_str()), v.x, v.y, v.z);
+}
+
+void Shader::set4Float(const std::string& name, float v1, float v2, float v3, float v4) {
+    glUniform4f(glGetUniformLocation(program(), name.c_str()), v1, v2, v3, v4);
+}
+
+void Shader::set4Float(const std::string& name, glm::vec4 v) {
+    glUniform4f(glGetUniformLocation(program(), name.c_str()), v.x, v.y, v.z, v.w);
+}
+
+void Shader::setMat4(const std::string& name, glm::mat4 val) {
+    glUniformMatrix4fv(glGetUniformLocation(program(), name.c_str()), 1, GL_FALSE, glm::value_ptr(val));
+}
 
 
 
