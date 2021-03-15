@@ -11,12 +11,13 @@
 #include "bounds.h"
 #include "Shader.h"
 
-#define UPPER_BOUND 100
+#define UPPER_BOUND 1000
 
 class Box {
 public:
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> sizes;
+    std::vector<glm::vec3> colors;
 
     void init() {
         vertices = {
@@ -82,6 +83,13 @@ public:
         VAO["sizeVBO"].setAttPointer<glm::vec3>(2, 3, GL_FLOAT, 1, 0, 1);
         VAO["sizeVBO"].clear();
 
+        // color VBO - dynamic
+        VAO["colVBO"] = BufferObject(GL_ARRAY_BUFFER);
+        VAO["colVBO"].generate();
+        VAO["colVBO"].bind();
+        VAO["colVBO"].setData<glm::vec3>(UPPER_BOUND, NULL, GL_DYNAMIC_DRAW);
+        VAO["colVBO"].setAttPointer<glm::vec3>(3, 3, GL_FLOAT, 1, 0, 1);
+
         ArrayObject::clear();
     }
 
@@ -101,6 +109,9 @@ public:
 
             VAO["sizeVBO"].bind();
             VAO["sizeVBO"].updateData<glm::vec3>(0, instances, &sizes[0]);
+
+            VAO["colVBO"].bind();
+            VAO["colVBO"].updateData<glm::vec3>(0, instances, &colors[0]);
         }
 
         // render data
@@ -111,7 +122,6 @@ public:
 
     void addInstance(BoundingRegion br, glm::vec3 pos, glm::vec3 size) {
         positions.push_back(br.calculateCenter() * size + pos);
-
         sizes.push_back(br.calculateDimensions() * size);
     }
 

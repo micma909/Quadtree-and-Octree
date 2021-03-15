@@ -2,10 +2,7 @@
 
 #include <glm/glm.hpp>
 
-// switches for instance states
-#define INSTANCE_DEAD		(unsigned char)0b00000001
-#define INSTANCE_MOVED		(unsigned char)0b00000010
-
+#include "Instance.h"
 
 // forward declaration
 namespace Octree {
@@ -23,29 +20,43 @@ class BoundingRegion
 public:
 	BoundTypes type;
 	
-	// combination of switches above
-	unsigned char state;
+	Instance* instance;
 
 	// pointer for quick access to current octree node
 	Octree::Node* octreeNode;
 
+	glm::vec3 debugColor;
+
 	// sphere values
 	glm::vec3 center;
 	float radius;
+	glm::vec3 ogCenter;
+	float ogRadius;
 
 	// bounding box values
 	glm::vec3 min;
 	glm::vec3 max;
+	glm::vec3 ogMin;
+	glm::vec3 ogMax;
+
+	// pointers to instance data
+	glm::vec3* instancePosition;
+	glm::vec3* instanceHalfSize;
 
 	BoundingRegion(BoundTypes type = BoundTypes::AABB) : type(type) {}
 	BoundingRegion(glm::vec3 center, float radius) : type(BoundTypes::SPHERE)
 		, center(center)
 		, radius(radius)
+		, ogCenter(center)
+		, ogRadius(radius)
 	{}
 	BoundingRegion(glm::vec3 min, glm::vec3 max) : type(BoundTypes::AABB)
 		, min(min)
 		, max(max)
+		, ogMin(min)
+		, ogMax(max)
 	{}
+
 	glm::vec3 calculateCenter()
 	{
 		return (type == BoundTypes::AABB) ? (this->min + this->max) * 0.5f : this->center;
@@ -53,6 +64,21 @@ public:
 	glm::vec3 calculateDimensions()
 	{ 
 		return (type == BoundTypes::AABB) ? (this->max - this->min) : glm::vec3(2.0f * this->radius);
+	}
+
+	// transform for instance
+	void transform() {
+		if (instance) {
+			if (type == BoundTypes::AABB) 
+			{
+				min = ogMin * instance->size + instance->position;
+				max = ogMax * instance->size + instance->position;
+			}
+			else {
+				center = ogCenter * instance->size + instance->position;
+				radius = ogRadius * instance->size.x;
+			}
+		}
 	}
 
 	// determine if point inside 
@@ -80,7 +106,10 @@ public:
 		if (br.type == BoundTypes::AABB)
 		{
 			// if br is box, just needs to contain min max
-			return (containsPoint(br.min) && containsPoint(br.max));
+			bool containsMin = containsPoint(br.min);
+			bool containsMax = containsPoint(br.max);
+
+			return (containsMin && containsMax);
 		}
 		else if (this->type == BoundTypes::SPHERE && br.type == BoundTypes::SPHERE)
 		{
