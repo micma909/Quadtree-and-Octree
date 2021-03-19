@@ -19,7 +19,6 @@
 // QuadTree
 //#include "QuadTree.h"
 #include "Util.h"
-#include "Geometries.h"
 
 // QuadTree examples
 #include "QuadTreeCollisions.h"

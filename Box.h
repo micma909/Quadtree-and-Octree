@@ -11,13 +11,13 @@
 #include "bounds.h"
 #include "Shader.h"
 
-#define UPPER_BOUND 1000
+#define UPPER_BOUND 10000
 
 class Box {
 public:
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> sizes;
-    std::vector<glm::vec3> colors;
+    std::vector<glm::vec4> colors;
 
     void init() {
         vertices = {
@@ -87,8 +87,8 @@ public:
         VAO["colVBO"] = BufferObject(GL_ARRAY_BUFFER);
         VAO["colVBO"].generate();
         VAO["colVBO"].bind();
-        VAO["colVBO"].setData<glm::vec3>(UPPER_BOUND, NULL, GL_DYNAMIC_DRAW);
-        VAO["colVBO"].setAttPointer<glm::vec3>(3, 3, GL_FLOAT, 1, 0, 1);
+        VAO["colVBO"].setData<glm::vec4>(UPPER_BOUND, NULL, GL_DYNAMIC_DRAW);
+        VAO["colVBO"].setAttPointer<glm::vec4>(3, 4, GL_FLOAT, 1, 0, 1);
 
         ArrayObject::clear();
     }
@@ -111,7 +111,7 @@ public:
             VAO["sizeVBO"].updateData<glm::vec3>(0, instances, &sizes[0]);
 
             VAO["colVBO"].bind();
-            VAO["colVBO"].updateData<glm::vec3>(0, instances, &colors[0]);
+            VAO["colVBO"].updateData<glm::vec4>(0, instances, &colors[0]);
         }
 
         // render data

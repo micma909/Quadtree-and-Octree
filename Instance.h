@@ -10,7 +10,7 @@ class Instance
 {
 public:
 	// construct with parameters and default
-	Instance(glm::vec3 pos, glm::vec3 size): position(pos), size(size), state(0), id(-1) {}
+	Instance(glm::vec3 pos, glm::vec3 size): position(pos), size(size), state(0), id(-1){}
 
 	// combination of switches above
 	unsigned char state;

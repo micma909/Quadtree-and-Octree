@@ -25,13 +25,15 @@ public:
 	// pointer for quick access to current octree node
 	Octree::Node* octreeNode;
 
-	glm::vec3 debugColor;
+	glm::vec4 debugColor;
 
 	// sphere values
 	glm::vec3 center;
 	float radius;
 	glm::vec3 ogCenter;
 	float ogRadius;
+
+	bool outOfBounds = false;
 
 	// bounding box values
 	glm::vec3 min;
@@ -53,6 +55,13 @@ public:
 	BoundingRegion(glm::vec3 min, glm::vec3 max) : type(BoundTypes::AABB)
 		, min(min)
 		, max(max)
+		, ogMin(min)
+		, ogMax(max)
+	{}
+
+	BoundingRegion(float uniformSize, glm::vec3 offset) : type(BoundTypes::AABB)
+		, min(offset - glm::vec3(uniformSize))
+		, max(offset + glm::vec3(uniformSize))
 		, ogMin(min)
 		, ogMax(max)
 	{}
@@ -87,8 +96,8 @@ public:
 		if (type == BoundTypes::AABB)
 		{
 			return (pt.x >= min.x) && (pt.x <= max.x) &&
-				(pt.y >= min.y) && (pt.y <= max.y) &&
-				(pt.z >= min.z) && (pt.z <= max.z);
+				   (pt.y >= min.y) && (pt.y <= max.y) &&
+				   (pt.z >= min.z) && (pt.z <= max.z);
 		}
 		else
 		{
@@ -97,6 +106,27 @@ public:
 			{
 				distSq += (this->center[i] - pt[i]) * (this->center[i] - pt[i]);
 			}
+		}
+	}
+
+	void reflectOnBounds(glm::vec3& pt, glm::vec3& vel)
+	{
+		if (type == BoundTypes::AABB)
+		{
+			if (pt.x < min.x)
+				vel = glm::reflect(vel, glm::vec3(1, 0, 0));
+			if (pt.x > max.x)
+				vel = glm::reflect(vel, glm::vec3(-1, 0, 0));
+
+			if (pt.y < min.y)
+				vel = glm::reflect(vel, glm::vec3(0, 1, 0));
+			if (pt.y > max.y)
+				vel = glm::reflect(vel, glm::vec3(0, -1, 0));
+
+			if (pt.z < min.z)
+				vel = glm::reflect(vel, glm::vec3(0, 0, 1));
+			if (pt.z > max.z)
+				vel = glm::reflect(vel, glm::vec3(0, 0, -1));
 		}
 	}
 

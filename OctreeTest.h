@@ -3,7 +3,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "Geometries.h"
 #include "arcball_camera.h"
 #include "Octree.h"
 #include "Box.h"
@@ -11,7 +10,7 @@
 
 
 
-static ArcballCamera arcballCamera({ 50,40,40 }, { 0,0,0 }, { 0,1,0 });
+static ArcballCamera arcballCamera({ 40,40,50 }, { 0,20,0 }, { 0,1,0 });
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 void cursorCallback(GLFWwindow* window, double x, double y);
 void scrollCallback(GLFWwindow* window, double x, double y);
@@ -40,7 +39,7 @@ public:
 
 		arcballCamera.setWH(w_width, w_height);
 
-		Projection = glm::perspective(glm::radians(45.0f), (float)w_width / (float)w_height, 0.01f, 100.0f);
+		Projection = glm::perspective(glm::radians(45.0f), (float)w_width / (float)w_height, 0.01f, 1000.0f);
 
 		Model = glm::mat4(1.0f);
 		Model = glm::translate(Model, glm::vec3(0, 0, 0));
@@ -56,27 +55,18 @@ public:
 		boxViewId = glGetUniformLocation(boxProgram, "view");
 		boxProjId = glGetUniformLocation(boxProgram, "projection");
 
-
-		//glGenBuffers(1, &vertexbuffer);
-		//glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-		//glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
-		//
-		//glGenBuffers(1, &colorbuffer);
-		//glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-		//glBufferData(GL_ARRAY_BUFFER, sizeof(g_color_buffer_data), g_color_buffer_data, GL_STATIC_DRAW);
-
-
 		glEnable(GL_DEPTH_TEST);
 		glDepthFunc(GL_LESS);
 
 		this->window = window;
 
 		box.init();
-
-		for(int i = 0; i < 100; i++)
+		int nrPoints = 300;
+		for (int i = 0; i < nrPoints; i++)
 		{
-			positions.push_back(glm::vec3(RandomFloat(-10, 10), RandomFloat(0, 25.0f*((float)i + 1) / 100.0f),  ((float)i + 1) / 10.0f));
-			velocities.push_back(glm::vec3(0, 0, 1));
+			positions.push_back(glm::vec3(RandomFloat(-10, 10), RandomFloat(2, 38), RandomFloat(-5, 5)));
+			//velocities.push_back(glm::vec3(1, 0, 0));
+			velocities.push_back(glm::vec3(RandomFloat(-1, 1), RandomFloat(-1, 1), RandomFloat(-1, 1)));
 			colors.push_back(glm::vec3(1));
 		}
 
@@ -84,17 +74,16 @@ public:
 		glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
 		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
 
-
 		glGenBuffers(1, &colorbuffer);
 		glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
 		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
 
-		octree = new Octree::Node(BoundingRegion(glm::vec3(-10,0,-10), glm::vec3(10,20,10)));
-		octree->region.debugColor = glm::vec3(1, 0, 0);
+		octree = new Octree::Node(BoundingRegion(20, glm::vec3(0, 20, 0)));
+		octree->region.debugColor = glm::vec4(1, 0, 0, 1);
 
 		for (int i = 0; i < positions.size(); i++)
 		{
-			glm::vec3 someSize = glm::vec3(0.01f);
+			glm::vec3 someSize = glm::vec3(0.05f);
 			instances.push_back(Instance(positions[i], glm::vec3(1.0f)));
 			boundingRegions.push_back(BoundingRegion(-someSize, +someSize));
 		}
@@ -114,34 +103,66 @@ public:
 
 	void Draw()
 	{
+		int timeState = glfwGetKey(window, GLFW_KEY_SPACE);
+		if (timeState == GLFW_RELEASE && oldTimeState == GLFW_PRESS)
+		{
+			pauseTime = !pauseTime;
+		}
+		oldTimeState = timeState;
+
 		box.positions.clear();
 		box.sizes.clear();
 		box.colors.clear();
 
-		BoundingRegion searchRegion(glm::vec3(-10, 0, 0), glm::vec3(10, 20, 10));
+		BoundingRegion searchRegion(glm::vec3(-21, -1, -21), glm::vec3(21, 41, 21));
 		box.positions.push_back(searchRegion.calculateCenter());
 		box.sizes.push_back(searchRegion.calculateDimensions());
-		box.colors.push_back(glm::vec3(1,1,1));
-		
-		for (int i = 0; i < positions.size(); i++)
-		{
-			instances[i].id = i;
-			glm:vec3 nextStep = 0.1f * velocities[i];
-			
-			if (!octree->region.containsPoint(instances[i].position + 2.f*nextStep))
+		box.colors.push_back(glm::vec4(1));
+
+		if(pauseTime)
+			for (int i = 0; i < positions.size(); i++)
 			{
-				velocities[i] *= -1;
-				nextStep = 0.1f * velocities[i];
+				glm:vec3 nextStep = 0.1f * velocities[i];
+				glm::vec3 nextPos = instances[i].position + nextStep;
+				BoundingRegion tmp = boundingRegions[i];
+				tmp.transform();
+				if (octree->region.containsRegion(tmp) && boundingRegions[i].outOfBounds)
+				{
+					octree->addToPending(boundingRegions[i]);
+					octree->ProcessPending();
+					octree->Build();
+					boundingRegions[i].outOfBounds = false;
+				}
+				
+				if(!searchRegion.containsRegion(tmp))
+				{
+					searchRegion.reflectOnBounds(nextPos, velocities[i]);
+					nextStep = 0.1f * velocities[i];
+					boundingRegions[i].outOfBounds = true;
+				}
+
+				//if (!octree->region.containsPoint(nextPos))
+				//{
+				//	octree->region.reflectOnBounds(nextPos, velocities[i]);
+				//	nextStep = 0.1f * velocities[i];
+				//	//octree->Update();
+				//	boundingRegions[i].outOfBounds = true;
+				//}
+				//if (octree->region.containsPoint(nextPos) && boundingRegions[i].outOfBounds)
+				//{
+				//	boundingRegions[i].outOfBounds = false;
+				//	octree->Insert(boundingRegions[i]);
+				//}
+
+				instances[i].position += nextStep;
+				
+				positions[i] = instances[i].position; // this is a bit stupid atm but ok
+				
+				glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
+				glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
+				
+				//states::activate(&boundingRegions[i].instance->state, INSTANCE_MOVED);
 			}
-			instances[i].position += nextStep;
-			
-			positions[i] = instances[i].position; // this is a bit stupid atm but ok
-			
-			glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
-			glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
-			
-			states::activate(&boundingRegions[i].instance->state, INSTANCE_MOVED);
-		}
 
 		octree->Update();
 		octree->Draw(box);
@@ -151,10 +172,6 @@ public:
 
 		glUseProgram(program);
 		glUniformMatrix4fv(mvpId, 1, GL_FALSE, &mvp[0][0]);
-		
-		//glEnableVertexAttribArray(0);
-		//glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-		//glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 		
 		glEnableVertexAttribArray(0);
 		glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
@@ -167,21 +184,18 @@ public:
 		glPointSize(3);
 		glDrawArrays(GL_POINTS, 0, positions.size());
 
-
 		std::vector<glm::vec3> foundPoints;
 		octree->Search(searchRegion, foundPoints);
 
 		if (foundPoints.size())
 		{
-			std::cout << "found nr of points: " << foundPoints.size() << std::endl;
-
 			glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
 			glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * foundPoints.size(), &foundPoints[0].x, GL_DYNAMIC_DRAW);
 
 			colors.clear();
 			for (int i = 0; i < foundPoints.size(); i++)
 			{
-				colors.push_back(glm::vec3(0, 1, 0));
+				colors.push_back(glm::vec3(1, 0.6, 0));
 			}
 
 			glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
@@ -201,18 +215,16 @@ public:
 
 			for (int i = 0; i < positions.size(); i++)
 			{
-				colors.push_back(glm::vec3(1));
+				colors.push_back(glm::vec3(1,1,1));
 			}
 
 			glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
 			glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
 		}
 		
-		
 		glDisableVertexAttribArray(1);
 		glDisableVertexAttribArray(0);
 
-	
 		glm::mat4 boxModelMat = glm::mat4(1.0f);
 
 		glUseProgram(boxProgram);
@@ -244,6 +256,9 @@ private:
 	int w_width;
 	int w_height;
 
+	int oldTimeState;
+	bool pauseTime = false;
+
 	glm::mat4 mvp;
 	GLuint mvpId;
 	GLuint gridProjId;
@@ -257,7 +272,6 @@ private:
 	GLuint gridProgram;
 	GLuint boxProgram;
 
-	GLuint vertexbuffer;
 	GLuint colorbuffer;
 	GLuint pointBuffer;
 
