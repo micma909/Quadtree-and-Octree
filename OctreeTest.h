@@ -61,12 +61,13 @@ public:
 		this->window = window;
 
 		box.init();
-		int nrPoints = 300;
+		int nrPoints = 1000;
 		for (int i = 0; i < nrPoints; i++)
 		{
-			positions.push_back(glm::vec3(RandomFloat(-10, 10), RandomFloat(2, 38), RandomFloat(-5, 5)));
-			//velocities.push_back(glm::vec3(1, 0, 0));
-			velocities.push_back(glm::vec3(RandomFloat(-1, 1), RandomFloat(-1, 1), RandomFloat(-1, 1)));
+			positions.push_back(glm::vec3(RandomFloat(-1, 1), RandomFloat(5, 25), RandomFloat(-10, 10)));
+		
+			//velocities.push_back(glm::vec3(RandomFloat(-1, 1), RandomFloat(-1, 1), RandomFloat(-1, 1)));
+			velocities.push_back(glm::vec3(-1, 0.1f, 0));
 			colors.push_back(glm::vec3(1));
 		}
 
@@ -114,7 +115,7 @@ public:
 		box.sizes.clear();
 		box.colors.clear();
 
-		BoundingRegion searchRegion(glm::vec3(-21, -1, -21), glm::vec3(21, 41, 21));
+		BoundingRegion searchRegion(glm::vec3(-19, -1, -19), glm::vec3(19, 41, 19));
 		box.positions.push_back(searchRegion.calculateCenter());
 		box.sizes.push_back(searchRegion.calculateDimensions());
 		box.colors.push_back(glm::vec4(1));
@@ -124,15 +125,14 @@ public:
 			{
 				glm:vec3 nextStep = 0.1f * velocities[i];
 				glm::vec3 nextPos = instances[i].position + nextStep;
+				
 				BoundingRegion tmp = boundingRegions[i];
 				tmp.transform();
 				if (octree->region.containsRegion(tmp) && boundingRegions[i].outOfBounds)
 				{
 					octree->addToPending(boundingRegions[i]);
-					octree->ProcessPending();
-					octree->Build();
 					boundingRegions[i].outOfBounds = false;
-				}
+				} 
 				
 				if(!searchRegion.containsRegion(tmp))
 				{
@@ -141,30 +141,24 @@ public:
 					boundingRegions[i].outOfBounds = true;
 				}
 
-				//if (!octree->region.containsPoint(nextPos))
-				//{
-				//	octree->region.reflectOnBounds(nextPos, velocities[i]);
-				//	nextStep = 0.1f * velocities[i];
-				//	//octree->Update();
-				//	boundingRegions[i].outOfBounds = true;
-				//}
-				//if (octree->region.containsPoint(nextPos) && boundingRegions[i].outOfBounds)
-				//{
-				//	boundingRegions[i].outOfBounds = false;
-				//	octree->Insert(boundingRegions[i]);
-				//}
-
 				instances[i].position += nextStep;
+				
 				
 				positions[i] = instances[i].position; // this is a bit stupid atm but ok
 				
-				glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
-				glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
 				
-				//states::activate(&boundingRegions[i].instance->state, INSTANCE_MOVED);
+				if(glm::length(velocities[i]) > 0.f)
+					states::activate(&boundingRegions[i].instance->state, INSTANCE_MOVED);
+				else
+					states::deactivate(&boundingRegions[i].instance->state, INSTANCE_MOVED);
 			}
 
+
+		glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
+
 		octree->Update();
+		octree->RemoveStaleBranches();
 		octree->Draw(box);
 
 		View = arcballCamera.transform();
@@ -187,7 +181,7 @@ public:
 		std::vector<glm::vec3> foundPoints;
 		octree->Search(searchRegion, foundPoints);
 
-		if (foundPoints.size())
+ 		if (foundPoints.size())
 		{
 			glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
 			glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * foundPoints.size(), &foundPoints[0].x, GL_DYNAMIC_DRAW);

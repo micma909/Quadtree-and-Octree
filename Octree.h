@@ -1,11 +1,12 @@
 #pragma once
 
 #define NR_CHILDREN 8
-#define MIN_BOUNDS 0.01
+#define MIN_BOUNDS 0.1
 
 #include <vector>
 #include <queue>
 #include <stack>
+#include <set>
 
 //#include "Box.h"
 
@@ -47,12 +48,14 @@ namespace Octree
 		bool treeBuilt = false;
 		
 		int level = 0;
+		int activeChildren = 0;
 
 		int maxLifespan = 8;
 		int currentLifespan = -1;
 
 		std::vector<BoundingRegion> objects;
 		std::queue<BoundingRegion> pendingQueue;
+		std::set<int> instanceIDs;
 
 		BoundingRegion region;
 
@@ -64,10 +67,7 @@ namespace Octree
 
 		void Search(BoundingRegion& bounds, std::vector<glm::vec3>& points);
 
-
 		bool RemoveStaleBranches();
-
-		int TotalInserted();
 		
 		void Build();
 		void Update();
