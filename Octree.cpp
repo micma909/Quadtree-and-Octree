@@ -40,21 +40,33 @@ Octree::Node::Node()
     : region(BoundTypes::AABB){}
 Octree::Node::Node(BoundingRegion bounds) 
     : region(bounds){}
-Octree::Node::Node(BoundingRegion bounds, std::vector<BoundingRegion> objectList) 
-    : region(bounds)
+//Octree::Node::Node(BoundingRegion bounds, std::vector<BoundingRegion> objectList) 
+//    : region(bounds)
+//{
+//    objects.insert(objects.end(), objectList.begin(), objectList.end());
+//}
+
+Octree::Node::Node(BoundingRegion* bounds, std::vector<BoundingRegion*> objectList)
+    : region(*bounds)
 {
-    objects.insert(objects.end(), objectList.begin(), objectList.end());
+    for (int i = 0; i < objectList.size(); i++)
+    {
+        objects.push_back(objectList[i]);
+        objectList[i]->octreeNode = this;
+    }
+
+   // objects.insert(objects.end(), objectList.begin(), objectList.end());
 }
 
-void Octree::Node::addToPending(BoundingRegion bounds)
+void Octree::Node::addToPending(BoundingRegion* bounds)
 {
-    int uniqueId = bounds.instance->id;
+    int uniqueId = bounds->instance->id;
     if (instanceIDs.find(uniqueId) == instanceIDs.end())
     {
-        instanceIDs.insert(bounds.instance->id);
+        instanceIDs.insert(bounds->instance->id);
         pendingQueue.push(bounds); // simple boundsPush for now
-        treeBuilt = false;
-        treeReady = false;
+        //treeBuilt = false;
+        //treeReady = false;
     }
 }
 
@@ -77,9 +89,9 @@ void Octree::Node::Search(BoundingRegion& bounds, std::vector<glm::vec3>& points
 
         for (int i = 0; i < objects.size(); i++)
         {
-            if (bounds.containsPoint(objects[i].instance->position))
+            if (bounds.containsPoint(objects[i]->instance->position))
             {
-                points.push_back(objects[i].instance->position);
+                points.push_back(objects[i]->instance->position);
             }
         }
     }
@@ -131,16 +143,16 @@ void Octree::Node::Draw(Box& box)
         glm::vec4 color = region.debugColor;
 
         if (level)
-            color.w = 1.0f - ((float)(10.0f - level)) / 10.0f;
+            color.w = 1.0f - ((float)(5.0f - level)) / 5.0f;
        
         box.colors.push_back(color);
 
         bool isLeaf = true;
         for (int i = 0; i < objects.size(); i++)
         {
-            objects[i].transform();
-            box.positions.push_back(objects[i].calculateCenter());
-            box.sizes.push_back(objects[i].calculateDimensions());
+            objects[i]->transform();
+            box.positions.push_back(objects[i]->calculateCenter());
+            box.sizes.push_back(objects[i]->calculateDimensions());
             box.colors.push_back(color);
         }
 
@@ -148,11 +160,6 @@ void Octree::Node::Draw(Box& box)
         {
             if (children[i] != nullptr)
             {
-                if (children[i]->objects.size() == 0 && !children[i]->hasChildren)
-                {
-                    children[i]->region.debugColor = glm::vec4(1, 0, 0, 1);
-                }
-
                 children[i]->Draw(box);
             }
         }
@@ -217,7 +224,7 @@ void Octree::Node::Build()
         calculateBounds(octants[i], (Octant)(1 << i), region);
         for (int j = objects.size() - 1; j >= 0; j--)
         {
-            BoundingRegion tmp = objects[j];
+            BoundingRegion tmp = *objects[j];
             tmp.transform();
             if (octants[i].containsRegion(tmp))
             {
@@ -231,6 +238,7 @@ void Octree::Node::Build()
 
                 // handover data from 'this' octant -> sub-octant
                 children[i]->objects.push_back(objects[j]);
+                objects[j]->octreeNode = children[i];
                 objects.erase(objects.begin() + j);
 
                 // mark sub-octant as active and set 'this' as parent
@@ -248,7 +256,7 @@ setVars:
     treeReady = true;
 
     for (int i = 0; i < objects.size(); i++)
-        objects[i].octreeNode = this;
+        objects[i]->octreeNode = this;
 }
 
 
@@ -284,7 +292,7 @@ void Octree::Node::Update()
         }
 
         // handover objects to root node
-        std::vector<BoundingRegion> toRelocate;
+        std::vector<BoundingRegion*> toRelocate;
         bool shouldDelegate = (hasChildren && objects.size() > 0);
 
         // simplify from previous frame
@@ -297,6 +305,7 @@ void Octree::Node::Update()
                     for (int j = 0; j < children[i]->objects.size(); j++)
                     {
                         objects.push_back(children[i]->objects[j]);
+                        children[i]->objects[j]->octreeNode = this;
                         children[i]->objects.erase(children[i]->objects.begin() + j);
                     }
                     states::deactivateIndex(&activeOctants, i);
@@ -311,8 +320,8 @@ void Octree::Node::Update()
 
         for (int i = objects.size() - 1; i >= 0; i--)
         {
-            bool hasMoved = states::isActive(&objects[i].instance->state, INSTANCE_MOVED);
-            bool noLongerFits = !region.containsRegion(objects[i]);
+            bool hasMoved = states::isActive(&objects[i]->instance->state, INSTANCE_MOVED);
+            bool noLongerFits = !region.containsRegion(*objects[i]);
             if (hasMoved || shouldDelegate || noLongerFits)
             {
                 toRelocate.push_back(objects[i]);
@@ -325,7 +334,7 @@ void Octree::Node::Update()
         Node* current = this;
         for (int i = 0; i < toRelocate.size(); i++)
         {
-            while (!current->region.containsRegion(toRelocate[i])) 
+            while (!current->region.containsRegion(*toRelocate[i])) 
             {
                 if (current->parent != nullptr)
                     current = current->parent;
@@ -346,28 +355,27 @@ void Octree::Node::Update()
     }
 }
 
-bool Octree::Node::Insert(BoundingRegion obj)
+bool Octree::Node::Insert(BoundingRegion* obj)
 {
-    BoundingRegion tmp2 = obj;
+    BoundingRegion tmp2 = *obj;
     tmp2.transform();
     if (level == 0 && !region.containsRegion(tmp2))
     {
-        std::set<int>::iterator it = instanceIDs.find(obj.instance->id);
+        std::set<int>::iterator it = instanceIDs.find(obj->instance->id);
         instanceIDs.erase(it, instanceIDs.end());
 
-        return false; // TODO fix this 
+        return false;
     }
 
-
     glm::vec3 dimensions = region.calculateDimensions();
-    if (!hasChildren && objects.size() == 0)
+    if (!hasChildren && objects.size() == 0 || level > 3)
     {
-        obj.octreeNode = this;
+        obj->octreeNode = this;
         objects.push_back(obj);
         return true;
     }
     
-    BoundingRegion tmp = obj;
+    BoundingRegion tmp = *obj;
     tmp.transform();
     // safeguard if object does not fit
     if (!region.containsRegion(tmp))
@@ -375,7 +383,7 @@ bool Octree::Node::Insert(BoundingRegion obj)
         if (parent != nullptr)
         {
             parent->objects.push_back(obj);
-            obj.octreeNode = parent;
+            obj->octreeNode = parent;
             return true;
         }
         else
@@ -385,7 +393,7 @@ bool Octree::Node::Insert(BoundingRegion obj)
     }
 
     objects.push_back(obj);
-    obj.octreeNode = this;
+    obj->octreeNode = this;
 
     // create regions if not defined
     BoundingRegion octants[NR_CHILDREN];
@@ -402,13 +410,13 @@ bool Octree::Node::Insert(BoundingRegion obj)
     }
        
     // determine which octants to put objects in
-    std::vector<BoundingRegion> octLists[NR_CHILDREN]; // array of lists of objects in each octant
+    std::vector<BoundingRegion*> octLists[NR_CHILDREN]; // array of lists of objects in each octant
     for (int i = 0, len = objects.size(); i < len; i++)
     {
-        objects[i].octreeNode = this;
+        objects[i]->octreeNode = this;
         for (int j = 0; j < NR_CHILDREN; j++)
         {
-            if (octants[j].containsRegion(objects[i]))
+            if (octants[j].containsRegion(*objects[i]))
             {
                 octLists[j].push_back(objects[i]);
                 // remove from objects list
@@ -427,7 +435,7 @@ bool Octree::Node::Insert(BoundingRegion obj)
             // objects exist in this octant
             if (children[i] != nullptr) 
             {
-                for (const BoundingRegion& br : octLists[i]) 
+                for (BoundingRegion* br : octLists[i]) 
                 {
                     children[i]->Insert(br);  
                 }
@@ -435,7 +443,7 @@ bool Octree::Node::Insert(BoundingRegion obj)
             else 
             {
                 // create new node
-                children[i] = new Node(octants[i], octLists[i]);
+                children[i] = new Node(&octants[i], octLists[i]);
                 children[i]->level = this->level + 1;
                 children[i]->region.debugColor = glm::vec4(0, 1, 1, 1); // glm::vec4(glm::linearRand(0.1f, 1.0f), glm::linearRand(0.1f, 1.0f), glm::linearRand(0.4f, 1.0f), 1);
                 children[i]->parent = this;

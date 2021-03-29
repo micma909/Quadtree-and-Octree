@@ -53,8 +53,8 @@ namespace Octree
 		int maxLifespan = 8;
 		int currentLifespan = -1;
 
-		std::vector<BoundingRegion> objects;
-		std::queue<BoundingRegion> pendingQueue;
+		std::vector<BoundingRegion*> objects;
+		std::queue<BoundingRegion*> pendingQueue;
 		std::set<int> instanceIDs;
 
 		BoundingRegion region;
@@ -62,8 +62,10 @@ namespace Octree
 		Node();
 		Node(BoundingRegion bounds);
 		Node(BoundingRegion bounds, std::vector<BoundingRegion> objectList);
+		Node(BoundingRegion* bounds, std::vector<BoundingRegion*> objectList);
 
-		void addToPending(BoundingRegion bounds);
+
+		void addToPending(BoundingRegion* bounds);
 
 		void Search(BoundingRegion& bounds, std::vector<glm::vec3>& points);
 
@@ -72,7 +74,7 @@ namespace Octree
 		void Build();
 		void Update();
 		void ProcessPending();
-		bool Insert(BoundingRegion obj);
+		bool Insert(BoundingRegion* obj);
 		void Destroy();
 
 		void Draw(Box& box);
