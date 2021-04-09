@@ -80,11 +80,11 @@ public:
 		if (instance) {
 			if (type == BoundTypes::AABB) 
 			{
-				min = ogMin * instance->size + instance->position;
-				max = ogMax * instance->size + instance->position;
+				min = ogMin * instance->size + *instance->position;
+				max = ogMax * instance->size + *instance->position;
 			}
 			else {
-				center = ogCenter * instance->size + instance->position;
+				center = ogCenter * instance->size + *instance->position;
 				radius = ogRadius * instance->size.x;
 			}
 		}
@@ -106,6 +106,27 @@ public:
 			{
 				distSq += (this->center[i] - pt[i]) * (this->center[i] - pt[i]);
 			}
+		}
+	}
+
+	void mirrorOnBounds(glm::vec3& pt)
+	{
+		if (type == BoundTypes::AABB)
+		{
+			if (pt.x < min.x)
+				pt.x = max.x;
+			if (pt.x > max.x)
+				pt.x = min.x;
+
+			if (pt.y < min.y)
+				pt.y = max.y;
+			if (pt.y > max.y)
+				pt.y = min.y;
+
+			if (pt.z < min.z)
+				pt.z = max.z;
+			if (pt.z > max.z)
+				pt.z = min.z;
 		}
 	}
 

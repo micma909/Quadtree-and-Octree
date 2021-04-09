@@ -124,3 +124,9 @@ static void limit(glm::vec2& vec, float limit)
     if (glm::length(vec) > 0)
         vec = glm::normalize(vec) * limit;
 }
+
+static void limit(glm::vec3& vec, float limit)
+{
+    if (glm::length(vec) > 0)
+        vec = glm::normalize(vec) * limit;
+}

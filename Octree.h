@@ -67,7 +67,8 @@ namespace Octree
 
 		void addToPending(BoundingRegion* bounds);
 
-		void Search(BoundingRegion& bounds, std::vector<glm::vec3>& points);
+		void Search(BoundingRegion& bounds, std::vector<int>& ids);
+		void ProximitySearch(Node& origin, BoundingRegion& search, std::vector<int>& ids);
 
 		bool RemoveStaleBranches();
 		
