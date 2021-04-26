@@ -224,8 +224,8 @@ public:
 
 	bool insert(Point* p, float eps = 0.f)
 	{
-		if(divided && m_points.size() != 0)
-			delegateToLeafNodes();
+		//if(divided && m_points.size() != 0)
+		//	delegateToLeafNodes();
 
 		if (!boundary.contains(p->pos, eps))
 			return false;

@@ -25,12 +25,13 @@
 #include "QuadTreeFlocking.h"
 #include "OctreeTest.h"
 
-static const int w_width = 1000;
-static const int w_height = 1000;
-static int nrPoints = 500;
+static const int w_width = 1600;
+static const int w_height = 1100;
+static int nrPoints = 2000;
 
-//#define QUADTREE_COLLISIONS
+#define QUADTREE_COLLISIONS
 //#define QUADTREE_FLOCKING
+//#define OCTREE_FLOCKING
 
 int main()
 {
@@ -61,9 +62,10 @@ int main()
     QTFlocking quadTreeFlocking(window, w_width, w_height, nrPoints);
     quadTreeFlocking.Setup();
 #endif
-
+#ifdef OCTREE_FLOCKING
     OctreeTest octTest;
     octTest.Setup(window, w_width, w_height);
+#endif
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -103,7 +105,9 @@ int main()
         quadTreeFlocking.Draw();
         quadTreeFlocking.ImGuiMenu();
 #endif
+#ifdef OCTREE_FLOCKING
         octTest.Draw();
+#endif
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

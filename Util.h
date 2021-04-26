@@ -92,7 +92,7 @@ static void drawHollowCircle(GLfloat x, GLfloat y, GLfloat radius) {
 static void drawPoint(glm::vec2& position, glm::vec2& velocity, float radius, glm::vec4& color)
 {
     glColor4f(color.r, color.g, color.b, color.a);
-    glm::vec2 vel = glm::normalize(velocity);
+    glm::vec2 vel = glm::vec2(0);// glm::normalize(velocity);
     glm::vec2 corner1;
     corner1.x = vel.y;
     corner1.y = -vel.x;
@@ -115,7 +115,7 @@ static void drawPoint(glm::vec2& position, glm::vec2& velocity, float radius, gl
 
     glEnableClientState(GL_VERTEX_ARRAY);
     glVertexPointer(3, GL_FLOAT, 0, lineVertices);
-    glDrawArrays(GL_LINE_STRIP, 0, 5);
+    glDrawArrays(GL_POINT, 0, 5);
     glDisableClientState(GL_VERTEX_ARRAY);
 }
 

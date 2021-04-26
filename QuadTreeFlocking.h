@@ -336,7 +336,7 @@ public:
 			for (int j = 0; j < 2; j++)
 				accelerations[j].push_back({ 0.f, 0.f });
 			ppRadius.push_back(2.5f);
-			ppColor.push_back( { 1, 1, 1, RandomFloat(0.3f, 1.0f)});
+			ppColor.push_back( { 1, 1, 1, 0.3f});
 			ppSeparationForce.push_back(separationMaxForce);
 			ppAvoidance.push_back({ 0.f, 0.f });
 
@@ -362,7 +362,7 @@ public:
 		std::vector<glm::vec2> lines;
 		qt->GetBoundsLineSegments(lines);
 
-		mvp = glm::ortho(0.f, static_cast<float>(w_width), 0.f, static_cast<float>(w_height), 0.f, 100.f);
+		mvp = glm::ortho(0.f, static_cast<float>(w_width+500), 0.f, static_cast<float>(w_height), 0.f, 100.f);
 		mvpId = glGetUniformLocation(program, "MVP");
 
 		glEnable(GL_BLEND);
@@ -396,7 +396,7 @@ public:
 			positions.clear();
 			lines.clear();
 			qt->GetBoundsLineSegments(lines);
-			if (lines.size())
+			if (lines.size() && quadTree)
 			{
 				glDisableVertexAttribArray(1);
 				glVertexAttrib4f(1, 0.15f, 0.15f, 0.15f, 1.f);
@@ -524,6 +524,7 @@ public:
 		this->alignmentMaxSpeed = aMaxSpeed;
 		ImGui::SliderFloat("max force_A", &aMaxForce, 0.0f, 20.0f);
 		this->alignmentMaxForce = aMaxForce;
+
 
 
 		ImGui::Checkbox("Cohesion", &cohesionOn);

@@ -78,6 +78,6 @@ namespace Octree
 		bool Insert(BoundingRegion* obj);
 		void Destroy();
 
-		void Draw(Box& box);
+		void Draw(Box& box, bool highlightGrid = false);
 	};
 }

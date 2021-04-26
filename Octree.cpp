@@ -49,6 +49,7 @@ Octree::Node::Node(BoundingRegion bounds)
 Octree::Node::Node(BoundingRegion* bounds, std::vector<BoundingRegion*> objectList)
     : region(*bounds)
 {
+    // populate nodes with list of objects
     for (int i = 0; i < objectList.size(); i++)
     {
         objects.push_back(objectList[i]);
@@ -60,43 +61,44 @@ Octree::Node::Node(BoundingRegion* bounds, std::vector<BoundingRegion*> objectLi
 
 void Octree::Node::addToPending(BoundingRegion* bounds)
 {
+    // add to pending queue IFF instance not already present in datastructure
     int uniqueId = bounds->instance->id;
     if (instanceIDs.find(uniqueId) == instanceIDs.end())
     {
         instanceIDs.insert(bounds->instance->id);
         pendingQueue.push(bounds); // simple boundsPush for now
-        //treeBuilt = false;
-        //treeReady = false;
     }
 }
 
+// added brute force method to alleviate boid algorithm
+// For each boid:
+// Go up two levels (if possible) and search resulting sub-tree
 void Octree::Node::ProximitySearch(Node& origin, BoundingRegion& search, std::vector<int>& ids)
 {
     Node* current = &origin;
   
-    if (current == nullptr || current->parent == nullptr)
+    if (current == nullptr)
+        return;
+
+    if (current->parent == nullptr)
         return;
         
     current = current->parent;
 
-    //while (!current->region.containsRegion(search))
-    //{
-    //    if (current->parent != nullptr)
-    //        current = current->parent;
-    //    else
-    //        break; // if root node, then leave
-    //}
+    if (current->parent != nullptr)
+        current = current->parent;
 
     current->Search(search, ids);
 }
 
+// search octree
 void Octree::Node::Search(BoundingRegion& bounds, std::vector<int>& ids)
 {
-    if (!hasChildren && objects.size() == 0)
-        return;
+    //if (!hasChildren && objects.size() == 0)
+    //    return;
     //if (!region.intersectsWith(bounds))
     //    return;
-    else
+    //else
     {
         if (hasChildren)
         {
@@ -123,12 +125,17 @@ void Octree::Node::Search(BoundingRegion& bounds, std::vector<int>& ids)
 
 bool Octree::Node::RemoveStaleBranches()
 {
+    // recurse for all children
     for (int i = 0; i < NR_CHILDREN; i++)
     {
         if (children[i] != nullptr)
             children[i]->RemoveStaleBranches();
     }
 
+    // For each child:
+    // Check if leafnode - ret true/ false.
+    // For each parent: 
+    // If child is leafnode && empty - remove child.
     for (int i = 0; i < NR_CHILDREN; i++)
     {
         if (children[i] != nullptr)
@@ -157,7 +164,8 @@ bool Octree::Node::RemoveStaleBranches()
     return true;
 }
 
-void Octree::Node::Draw(Box& box)
+// simple draw method
+void Octree::Node::Draw(Box& box, bool highlightGrid)
 {
     if (treeBuilt && treeReady)
     {
@@ -166,8 +174,16 @@ void Octree::Node::Draw(Box& box)
 
         glm::vec4 color = region.debugColor;
 
+        float highlight = 40.0f;
+        if (highlightGrid)
+        {
+            color = glm::vec4(0,1,1,1);
+            highlight = 10.f;
+        }
+           
+
         if (level)
-            color.w = 1.0f - ((float)(20.0f - level)) / 20.0f;
+           color.w = 1.0f - ((float)(highlight - level)) / highlight;
        
         box.colors.push_back(color);
 
@@ -184,7 +200,7 @@ void Octree::Node::Draw(Box& box)
         {
             if (children[i] != nullptr)
             {
-                children[i]->Draw(box);
+                children[i]->Draw(box, highlightGrid);
             }
         }
 
@@ -203,7 +219,7 @@ void Octree::Node::ProcessPending()
         }
         Build();
     }
-    else
+    else // not sure if this is needed anymore
     {
        //for (int i = 0, len = pendingQueue.size(); i < len; i++) {
        //    BoundingRegion br = pendingQueue.front();
@@ -226,9 +242,6 @@ void Octree::Node::Build()
 {
     BoundingRegion octants[NR_CHILDREN];
     glm::vec3 dimensions = region.calculateDimensions();
-
-    if (level > 3)
-        goto setVars;
 
     if (objects.size() <= 1)
         goto setVars;
@@ -259,7 +272,7 @@ void Octree::Node::Build()
                 {
                     children[i] = new Node(octants[i]);
                     children[i]->level = this->level + 1;
-                    children[i]->region.debugColor = glm::vec4(0, 1, 1, 1); // glm::vec4(glm::linearRand(0.1f, 1.0f), glm::linearRand(0.1f, 1.0f), glm::linearRand(0.1f, 1.0f), 1);
+                    children[i]->region.debugColor = glm::vec4(0, 0.5, 1, 1); // glm::vec4(glm::linearRand(0.1f, 1.0f), glm::linearRand(0.1f, 1.0f), glm::linearRand(0.1f, 1.0f), 1);
                     hasChildren = true;
                 }
 
@@ -310,6 +323,7 @@ void Octree::Node::Update()
             }
         }
 
+       /// WIP - Logic below needs work, intended to remove redundant layers formed by object removal /// 
 
        // for (int i = 0; i < NR_CHILDREN; i++)
        // {
@@ -463,7 +477,7 @@ bool Octree::Node::Insert(BoundingRegion* obj)
                 // create new node
                 children[i] = new Node(&octants[i], octLists[i]);
                 children[i]->level = this->level + 1;
-                children[i]->region.debugColor = glm::vec4(0, 1, 1, 1); // glm::vec4(glm::linearRand(0.1f, 1.0f), glm::linearRand(0.1f, 1.0f), glm::linearRand(0.4f, 1.0f), 1);
+                children[i]->region.debugColor = glm::vec4(0, 0.5, 1, 1); // glm::vec4(glm::linearRand(0.1f, 1.0f), glm::linearRand(0.1f, 1.0f), glm::linearRand(0.4f, 1.0f), 1);
                 children[i]->parent = this;
                 states::activateIndex(&activeOctants, i);
                 children[i]->Build();

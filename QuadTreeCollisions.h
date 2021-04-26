@@ -112,22 +112,25 @@ public:
 
         positions.clear();
         lines.clear();
-        qt->GetBoundsLineSegments(lines);
+        if (runQuad)
+        {
+            qt->GetBoundsLineSegments(lines);
 
-        glDisableVertexAttribArray(1);
-        glVertexAttrib4f(1, 0.15f, 0.15f, 0.15f, 1.f);
+            glDisableVertexAttribArray(1);
+            glVertexAttrib4f(1, 0.15f, 0.15f, 0.15f, 1.f);
 
-        GLuint vboLines;
-        glGenBuffers(1, &vboLines);
-        glBindBuffer(GL_ARRAY_BUFFER, vboLines);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * lines.size(), &lines[0].x, GL_DYNAMIC_DRAW);
+            GLuint vboLines;
+            glGenBuffers(1, &vboLines);
+            glBindBuffer(GL_ARRAY_BUFFER, vboLines);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * lines.size(), &lines[0].x, GL_DYNAMIC_DRAW);
 
-        glBindBuffer(GL_ARRAY_BUFFER, vboLines);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-        glDrawArrays(GL_LINES, 0, lines.size());
-        glDisableVertexAttribArray(0);
-        glDisableVertexAttribArray(1);
-
+            glBindBuffer(GL_ARRAY_BUFFER, vboLines);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            glDrawArrays(GL_LINES, 0, lines.size());
+            glDisableVertexAttribArray(0);
+            glDisableVertexAttribArray(1);
+        }
+       
         Rectangle search(xDrag, yDrag, xw, yh);
       
        // if (doSearch)

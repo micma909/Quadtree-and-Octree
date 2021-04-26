@@ -8,7 +8,7 @@
 #include "Box.h"
 #include "Instance.h"
 
-
+static int frameNr = 0;
 
 static ArcballCamera arcballCamera({ 80,80,90 }, { 0,40,0 }, { 0,1,0 });
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
@@ -61,15 +61,15 @@ public:
 		this->window = window;
 
 		box.init();
-		int nrHunters = 2; 
-		int nrBoids = 500;
+		nrHunters = 3; 
+		nrBoids = 500;
 
 		for (int i = 0; i < nrHunters; i++)
 		{
 			accelerations.push_back(glm::vec3(0.f));
 			positions.push_back(glm::vec3(RandomFloat(-39, 39), RandomFloat(1, 79), RandomFloat(-39, 39)));
 			velocities.push_back(glm::vec3(RandomFloat(-0.1f, 0.1f), RandomFloat(-0.1f, 0.1f), RandomFloat(-0.1f, 0.1f)));
-			colors.push_back(glm::vec3(0,1,0));
+			colors.push_back(glm::vec4(1,0.3,0,1));
 			behaviors.push_back(Behavior::Hunter);
 		}
 
@@ -78,7 +78,7 @@ public:
 			accelerations.push_back(glm::vec3(0.f));
 			positions.push_back(glm::vec3(RandomFloat(-39, 39), RandomFloat(1, 79), RandomFloat(-39, 39)));
 			velocities.push_back(glm::vec3(RandomFloat(-0.1f, 0.1f), RandomFloat(-0.1f, 0.1f), RandomFloat(-0.1f, 0.1f)));
-			colors.push_back(glm::vec3(1));
+			colors.push_back(glm::vec4(1,1,1,0.5f));
 			behaviors.push_back(Behavior::Boid);
 		}
 
@@ -88,10 +88,12 @@ public:
 
 		glGenBuffers(1, &colorbuffer);
 		glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
 
 		octree = new Octree::Node(BoundingRegion(50, glm::vec3(0, 50, 0)));
-		octree->region.debugColor = glm::vec4(1, 0, 0, 1);
+		octree->region.debugColor = glm::vec4(0.2, 0.2, 0.2, 1);
+
+		flockingCenter = octree->region.calculateCenter();
 
 		for (int i = 0; i < positions.size(); i++)
 		{
@@ -156,6 +158,12 @@ public:
 				octree->ProximitySearch(*boundingRegions[i].octreeNode, searchRegion, foundIDs);
 				//octree->Search(searchRegion, foundIDs);
 
+				colors[i].x += 0.005f;
+				colors[i].y += 0.005f;
+				colors[i].z += 0.005f;
+				colors[i].w -= 0.005f;
+				colors[i].w = std::max(0.5f, colors[i].w);
+
 				for (int j = 0; j < foundIDs.size(); j++)
 				{
 					int idx = foundIDs[j];
@@ -166,7 +174,7 @@ public:
 						continue;
 					
 					float alignmentRadius = 6.f;
-					float separationRadius = 3.f;
+					float separationRadius = 5.f;
 					float cohesionRadius = 10.f;
 
 
@@ -194,12 +202,12 @@ public:
 					}
 					else if (behaviors[idx] == Behavior::Hunter)
 					{
-						colors[i] = glm::vec3(0, 1, 1);
+						colors[i] = glm::vec4(1, 1, 1, 1);
 
 						glm::vec3 diff = positions[i] - positions[idx];
 						diff /= d;
 						
-						avoidance = 4.0f * diff;
+						avoidance = 6.0f * diff;
 						alignment *= 0;
 						cohesion *= 0;
 						alignmentCount = 0;
@@ -209,11 +217,11 @@ public:
 			}
 			else if (behaviors[i] == Behavior::Hunter)
 			{
-				float hunterRadius = 5;
+				float hunterRadius = 20;
 				BoundingRegion searchRegion(pos - glm::vec3(hunterRadius), pos + glm::vec3(hunterRadius));
 
-				//octree->ProximitySearch(*boundingRegions[i].octreeNode, searchRegion, foundIDs);
-				octree->Search(searchRegion, foundIDs);
+				octree->ProximitySearch(*boundingRegions[i].octreeNode, searchRegion, foundIDs);
+				//octree->Search(searchRegion, foundIDs);
 
 				for (int j = 0; j < foundIDs.size(); j++)
 				{
@@ -275,11 +283,18 @@ public:
 
 			if (behaviors[i] == Behavior::Hunter)
 			{
-				accelerations[i] *= 15.f;
+				cohesionCount = std::min(cohesionCount, 40);
+				accelerations[i] *= cohesionCount;
+				accelerations[i] -= (pos - flockingCenter) * 0.0001f;
+			}
+			else
+			{
+				accelerations[i] -= (pos - flockingCenter) * 0.0002f;
 			}
 
-			glm::vec3 center = glm::vec3(0, 40, 0);
-			accelerations[i] -= (pos - center) * 0.0001f;
+			if (frameNr % 1000 == 0)
+				flockingCenter = glm::vec3(RandomFloat(-30, 30), RandomFloat(30, 70), RandomFloat(-30, 30));
+
 
 			velocities[i] *= 0.99f;
 
@@ -296,6 +311,7 @@ public:
 
 	void Draw()
 	{
+		// buttons
 		int timeState = glfwGetKey(window, GLFW_KEY_SPACE);
 		if (timeState == GLFW_RELEASE && oldTimeState == GLFW_PRESS)
 		{
@@ -303,33 +319,23 @@ public:
 		}
 		oldTimeState = timeState;
 
+		int highlightState = glfwGetKey(window, GLFW_KEY_H);
+		if (highlightState == GLFW_RELEASE && oldHighlightState == GLFW_PRESS)
+		{
+			highlightGrid = !highlightGrid;
+		}
+		oldHighlightState = highlightState;
+
+		// debug boxdraw
 		box.positions.clear();
 		box.sizes.clear();
 		box.colors.clear();
 
-		BoundingRegion searchRegion(glm::vec3(-40, -100, -40), glm::vec3(40, 0, 40));
-		box.positions.push_back(searchRegion.calculateCenter());
-		box.sizes.push_back(searchRegion.calculateDimensions());
-		box.colors.push_back(glm::vec4(1));
-
-		//octree->Destroy();
-		//
-		//octree = new Octree::Node(BoundingRegion(40, glm::vec3(0, 40, 0)));
-		//octree->region.debugColor = glm::vec4(1, 0, 0, 1);
-		//
-		//
-		//for (int i = 0; i < positions.size(); i++)
-		//{
-		//	boundingRegions[i].instance = &instances[i];
-		//	boundingRegions[i].instance->id = i;
-		//	octree->addToPending(&boundingRegions[i]);
-		//}
-
-		//octree->Update();
-
-
+		// Update boids 
 		if (!pauseTime)
 		{
+
+			// run boid algorithm
 			data_flocking_oct();
 
 			for (int i = 0; i < positions.size(); i++)
@@ -339,26 +345,26 @@ public:
 				//positions[i] += velocities[i];
 				positions[i] += velocities[i];
 				velocities[i] += accelerations[i];
+			
 				accelerations[i] *= 0.f;
-
-
-			//	if (glm::length(velocities[i]) > 0.f)
-					states::activate(&boundingRegions[i].instance->state, INSTANCE_MOVED);
-			//	else
-			//		states::deactivate(&boundingRegions[i].instance->state, INSTANCE_MOVED);		
+			
+				// states intended for when some objects stationary, currently all in motion
+				states::activate(&boundingRegions[i].instance->state, INSTANCE_MOVED);
 			}
 		}
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 		glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
 		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * positions.size(), &positions[0].x, GL_DYNAMIC_DRAW);
 
 		glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
 
 		octree->Update();
-		octree->Build();
 	
-		octree->Draw(box);
+		octree->Draw(box, highlightGrid);
 
 		View = arcballCamera.transform();
 		mvp = Projection * View * Model;
@@ -372,56 +378,30 @@ public:
 		
 		glEnableVertexAttribArray(1);
 		glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+		glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
 		
-		glPointSize(3);
+		glPointSize(2);
 		glDrawArrays(GL_POINTS, 0, positions.size());
-/*
-		std::vector<glm::vec3> foundPoints;
-		std::vector<int> instanceIDs;
-		octree->Search(searchRegion, instanceIDs);
 
-		for (int i = 0; i < instanceIDs.size(); i++)
+		std::vector<glm::vec3> hunters;
+
+		for (int i = 0; i < nrHunters; i++)
 		{
-			int idx = instanceIDs[i];
-			foundPoints.push_back(positions[idx]);
+			hunters.push_back(positions[i]);
 		}
+		
+		glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * hunters.size(), &hunters[0].x, GL_DYNAMIC_DRAW);
+	
+		
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+		
+		glPointSize(7);
+		glDrawArrays(GL_POINTS, 0, hunters.size());
+		hunters.clear();
 
- 		if (foundPoints.size())
-		{
-			colors.clear();
-			for (int i = 0; i < foundPoints.size(); i++)
-			{
-				colors.push_back(glm::vec3(1, 0.6, 0));
-			}
-
-			glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
-			glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * foundPoints.size(), &foundPoints[0].x, GL_DYNAMIC_DRAW);
-
-			glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-			glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
-
-			glEnableVertexAttribArray(0);
-			glBindBuffer(GL_ARRAY_BUFFER, pointBuffer);
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-
-			glEnableVertexAttribArray(1);
-			glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-
-			glPointSize(10);
-			glDrawArrays(GL_POINTS, 0, positions.size());
-			colors.clear();
-
-			for (int i = 0; i < positions.size(); i++)
-			{
-				colors.push_back(glm::vec3(1,1,1));
-			}
-
-			glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-			glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * colors.size(), &colors[0].x, GL_DYNAMIC_DRAW);
-		}
-*/
 		glDisableVertexAttribArray(1);
 		glDisableVertexAttribArray(0);
 
@@ -450,14 +430,21 @@ public:
 			gridProgram = gridShader.createProgram();
 			boxProgram = boxShader.createProgram();
 		}
+
+		frameNr++;
 	}
 
 private:
+	int nrHunters;
+	int nrBoids;
+
 	int w_width;
 	int w_height;
 
 	int oldTimeState;
+	int oldHighlightState;
 	bool pauseTime = true;
+	bool highlightGrid = false;
 
 	glm::mat4 mvp;
 	GLuint mvpId;
@@ -487,7 +474,7 @@ private:
 	std::vector<glm::vec3> positions;
 	std::vector<glm::vec3> velocities;
 	std::vector<glm::vec3> accelerations;
-	std::vector<glm::vec3> colors;
+	std::vector<glm::vec4> colors;
 
 	std::vector<Instance> instances;
 
@@ -501,6 +488,7 @@ private:
 
 	std::vector<Behavior> behaviors;
 
+	glm::vec3 flockingCenter;
 
 	GLFWwindow* window;
 };
