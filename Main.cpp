@@ -27,7 +27,7 @@
 
 static const int w_width = 1600;
 static const int w_height = 1100;
-static int nrPoints = 2000;
+static int nrPoints = 1500;
 
 #define QUADTREE_COLLISIONS
 //#define QUADTREE_FLOCKING
@@ -116,7 +116,7 @@ int main()
         glfwSwapBuffers(window);
         glfwPollEvents();
         ImGui::EndFrame();
-        //glfwSwapInterval(0);
+        glfwSwapInterval(0);
 
     } while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS &&
         glfwWindowShouldClose(window) == 0);

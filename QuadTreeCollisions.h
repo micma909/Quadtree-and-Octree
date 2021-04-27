@@ -32,8 +32,11 @@ public:
             radiuses[i] = 10.f;// RandomFloat(4, 6);
             speeds[i] = RandomFloat(0.2f, 0.5f);
             colors[i] = glm::vec4(1,0.8f,0.f,1.f);
+            
+            points[i].cell = qt;
         
             qt->insert(&points[i]);
+            points[i].initialized = true;
         }
         this->oldState_left = GLFW_RELEASE;
         this->oldState_right = GLFW_RELEASE;
@@ -84,7 +87,7 @@ public:
         if (!pauseTime)
         {
             MovePoints();
-            NaiveCollision();
+            //NaiveCollision();
             QuadTreeCollision();
         }
         Draw();
@@ -112,7 +115,7 @@ public:
 
         positions.clear();
         lines.clear();
-        if (runQuad)
+        if (runQuad && lines.size())
         {
             qt->GetBoundsLineSegments(lines);
 
@@ -133,17 +136,17 @@ public:
        
         Rectangle search(xDrag, yDrag, xw, yh);
       
-       // if (doSearch)
+        if (doSearch)
         {
-            std::vector<Point*> foundPoints;
+            std::vector<Point> foundPoints;
             qt->query(search, &foundPoints);
             g_count = 0;
             doSearch = false;
 
             for (int i = 0; i < foundPoints.size(); i++)
             {
-                int index = std::any_cast<int&>(foundPoints[i]->data);
-                foundPositions.push_back(foundPoints[i]->pos);
+                int index = std::any_cast<int&>(foundPoints[i].data);
+                foundPositions.push_back(foundPoints[i].pos);
             }
         }
 
@@ -162,29 +165,29 @@ public:
         }
         foundPositions.clear();
 
-        int x = search.x;
-        int y = search.y;
-        int w = search.w;
-        int h = search.h;
-        rangeLines.push_back({ x - w, y - h });
-        rangeLines.push_back({ x - w, y + h });
-        rangeLines.push_back({ x + w, y + h });
-        rangeLines.push_back({ x + w, y - h });
-        rangeLines.push_back({ x - w, y - h });
-
-        glEnableVertexAttribArray(0);
-        glVertexAttrib4f(1, 1.f, 1.f, 1.f, 1.f);
-
-        GLuint vboRange;
-        glGenBuffers(1, &vboRange);
-        glBindBuffer(GL_ARRAY_BUFFER, vboRange);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * rangeLines.size(), &rangeLines[0].x, GL_DYNAMIC_DRAW);
-
-        glBindBuffer(GL_ARRAY_BUFFER, vboRange);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-        glDrawArrays(GL_LINE_STRIP, 0, rangeLines.size());
-        glDisableVertexAttribArray(0);
-        rangeLines.clear();
+        //int x = search.x;
+        //int y = search.y;
+        //int w = search.w;
+        //int h = search.h;
+        //rangeLines.push_back({ x - w, y - h });
+        //rangeLines.push_back({ x - w, y + h });
+        //rangeLines.push_back({ x + w, y + h });
+        //rangeLines.push_back({ x + w, y - h });
+        //rangeLines.push_back({ x - w, y - h });
+        //
+        //glEnableVertexAttribArray(0);
+        //glVertexAttrib4f(1, 1.f, 1.f, 1.f, 1.f);
+        //
+        //GLuint vboRange;
+        //glGenBuffers(1, &vboRange);
+        //glBindBuffer(GL_ARRAY_BUFFER, vboRange);
+        //glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * rangeLines.size(), &rangeLines[0].x, GL_DYNAMIC_DRAW);
+        //
+        //glBindBuffer(GL_ARRAY_BUFFER, vboRange);
+        //glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+        //glDrawArrays(GL_LINE_STRIP, 0, rangeLines.size());
+        //glDisableVertexAttribArray(0);
+        //rangeLines.clear();
     }
 
 
@@ -288,7 +291,7 @@ public:
 
     void MovePoints()
     {
-        qt->clear(treeLevelCapacity);
+       qt->clear(treeLevelCapacity);
 
         for (int i = 0; i < points.size(); i++)
         {       
@@ -347,7 +350,7 @@ public:
         if (runQuad)
         {
             nrOfChecks = 0;
-            std::vector<Point*> collidable;
+            std::vector<Point> collidable;
             for (int i = 0; i < points.size(); i++)
             {
                 Point* p1 = &points[i];
@@ -363,7 +366,7 @@ public:
                 {
                     nrOfChecks++;
               
-                    glm::vec2 diff = p1->pos - collidable[j]->pos;
+                    glm::vec2 diff = p1->pos - collidable[j].pos;
                     float distance = glm::length(diff);
 
                     if (distance < 0.001f)
@@ -417,7 +420,6 @@ public:
     }
 
 private:
-    std::vector<glm::vec2> debugCollidable;
 
 	int w_width;
 	int w_height;

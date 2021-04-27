@@ -115,7 +115,7 @@ public:
 		int cohesionCount = 0;
 		int separationCount = 0;
 
-		std::vector<Point*> nearBoids;
+		std::vector<Point> nearBoids;
 		for (int i = 0; i < points.size(); i++)
 		{
 			BoidData& thisBoidsData = getBoidData(points[i].data);
@@ -147,12 +147,12 @@ public:
 
 				for (int j = 0; j < nearBoids.size(); j++)
 				{
-					float d = distance(p1, nearBoids[j]->pos);
+					float d = distance(p1, nearBoids[j].pos);
 					if (d < 0.001f)
 						continue;
 
-					BoidData& otherBoidData = getBoidData(nearBoids[j]->data);
-					glm::vec2& p2 = nearBoids[j]->pos;
+					BoidData& otherBoidData = getBoidData(nearBoids[j].data);
+					glm::vec2& p2 = nearBoids[j].pos;
 					if (otherBoidData.behaviorType == Behavior::Boid)
 					{
 						if (d < this->alignmentRadius && alignmentOn)
@@ -164,13 +164,13 @@ public:
 
 						if (d < this->cohesionRadius && cohesionOn)
 						{
-							cohesion += nearBoids[j]->pos;
+							cohesion += nearBoids[j].pos;
 							cohesionCount++;
 						}
 
 						if (d < this->separationRadius && separationOn)
 						{
-							glm::vec2 diff = points[i].pos - nearBoids[j]->pos;
+							glm::vec2 diff = points[i].pos - nearBoids[j].pos;
 							diff /= std::pow(d, 2);
 
 							separation += diff;
@@ -179,7 +179,7 @@ public:
 					}
 					else if(otherBoidData.behaviorType == Behavior::Hunter && addHunters)
 					{
-						glm::vec2 diff = points[i].pos - nearBoids[j]->pos;
+						glm::vec2 diff = points[i].pos - nearBoids[j].pos;
 						diff /= d;
 
 						ppColor[i] = glm::vec4(0, 1, 1, 1);
@@ -201,11 +201,11 @@ public:
 			
 				for (int j = 0; j < nearBoids.size(); j++)
 				{
-					float d = glm::distance(p1, nearBoids[j]->pos);
+					float d = glm::distance(p1, nearBoids[j].pos);
 			
 					if (d < hunterRadius && cohesionOn && frameCount % 20 == 0)
 					{
-						cohesion += nearBoids[j]->pos;
+						cohesion += nearBoids[j].pos;
 						cohesionCount++;
 					}
 				}
@@ -460,9 +460,6 @@ public:
 			// rebuild quadtree
 			bool success = qt->insert(&points[i]);
 		}
-	
-		if(drawQuadTree)
-			qt->drawGrid();
 
 		frameCount++;
 		frameIndex = !frameIndex;

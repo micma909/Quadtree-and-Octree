@@ -8,13 +8,15 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 using namespace glm;
-
+class QuadTree;
 struct Point
 {
 	Point() : pos(0,0), data(nullptr){}
 	Point(float x, float y, std::any d = nullptr) : pos(x, y), data(d){}
 	glm::vec2 pos;
+	QuadTree* cell;
 	std::any data;
+	bool initialized = false;
 };
 
 class Rectangle
@@ -42,114 +44,6 @@ public:
 	}
 };
 
-static void drawBounds(Rectangle b)
-{
-	GLfloat lineVertices[] =
-	{
-		b.x - b.w, b.y, 0,
-		b.x + b.w, b.y, 0,
-		b.x, b.y + b.h, 0,
-		b.x, b.y - b.h, 0
-	};
-	// Draw
-	glColor4f(1.f, 1.f, 1.f, 0.2f);
-
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(3, GL_FLOAT, 0, lineVertices);
-	glDrawArrays(GL_LINES, 0, 4);
-	glDisableClientState(GL_VERTEX_ARRAY);
-}
-
-static void drawPoints(std::vector<Point>& points, 
-	std::vector<glm::vec2>& velocities, 
-	std::vector<float>& radiuses,
-	std::vector<glm::vec4>& colors)
-{
-	for (int i = 0; i < points.size(); i++)
-	{
-		glPointSize(radiuses[i]);
-		glColor4f(colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-		
-		GLfloat pointVert[] = { points[i].pos.x, points[i].pos.y };
-		glEnableClientState(GL_VERTEX_ARRAY);
-		glVertexPointer(2, GL_FLOAT, 0, pointVert);
-		glDrawArrays(GL_POINTS, 0, 1);
-		glDisableClientState(GL_VERTEX_ARRAY);
-
-		glm::vec2 vel = glm::normalize(velocities[i]);
-		GLfloat lineVertices[] =
-		{
-			points[i].pos.x, points[i].pos.y, 0,
-			points[i].pos.x + vel.x*5.f, points[i].pos.y + vel.y* 5.f, 0
-		};
-		
-		glEnableClientState(GL_VERTEX_ARRAY);
-		glVertexPointer(3, GL_FLOAT, 0, lineVertices);
-		glDrawArrays(GL_LINE_STRIP, 0, 2);
-		glDisableClientState(GL_VERTEX_ARRAY);
-	}
-}
-
-static void drawPoints(std::vector<Point*>* points, float r, float g, float b, float a)
-{
-	
-	glColor4f(r, g, b, a);
-	for (auto& p : *points)
-	{
-		//glPointSize(p->r);
-		glPointSize(2.0f);
-
-		GLfloat pointVert[] = { p->pos.x, p->pos.y };
-		glEnableClientState(GL_VERTEX_ARRAY);
-		glVertexPointer(2, GL_FLOAT, 0, pointVert);
-		glDrawArrays(GL_POINTS, 0, 1);
-		glDisableClientState(GL_VERTEX_ARRAY);
-	}
-	glPointSize(2);
-}
-
-static void drawQuad(Rectangle rec, float r, float g, float b, float a)
-{
-	int x = rec.x;
-	int y = rec.y;
-	int w = rec.w;
-	int h = rec.h;
-
-	glColor4f(r, g, b, a);
-
-	glBegin(GL_TRIANGLES);
-	glVertex2i(x - w, y - h);
-	glVertex2i(x + w, y + h);
-	glVertex2i(x - w, y + h);
-	glVertex2i(x - w, y - h);
-	glVertex2i(x + w, y - h);
-	glVertex2i(x + w, y + h);
-	glEnd();
-}
-
-static void drawRange(Rectangle rec, float r, float g, float b, float a)
-{
-	int x = rec.x;
-	int y = rec.y;
-	int w = rec.w;
-	int h = rec.h;
-
-	GLfloat lineVertices[] =
-	{
-		x - w, y - h, 0,
-		x - w, y + h, 0,
-		x + w, y + h, 0,
-		x + w, y - h, 0,
-		x - w, y - h, 0,
-	};
-	// Draw
-	glColor4f(r, g, b, a);
-
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(3, GL_FLOAT, 0, lineVertices);
-	glDrawArrays(GL_LINE_STRIP, 0, 5);
-	glDisableClientState(GL_VERTEX_ARRAY);
-}
 static int g_count = 0;
 class QuadTree
 {
@@ -161,97 +55,83 @@ public:
 		south_east(nullptr)
 	{}
 
-	void subdivide()
-	{
-		int x = boundary.x;
-		int y = boundary.y;
-		int w = boundary.w;
-		int h = boundary.h;
-
-		allBounds.push_back(glm::vec2(x - w, y));
-		allBounds.push_back(glm::vec2(x + w, y));
-		allBounds.push_back(glm::vec2(x, y + h));
-		allBounds.push_back(glm::vec2(x, y - h));
-
-		Rectangle ne(x + w / 2, y - h / 2, w / 2,h / 2);
-		north_east = new QuadTree(ne, capacity);
-
-		Rectangle nw(x - w / 2, y - h / 2, w / 2, h / 2);
-		north_west = new QuadTree(nw, capacity);
-
-		Rectangle se(x + w / 2, y + h / 2, w / 2, h / 2);
-		south_east = new QuadTree(se, capacity);
-
-		Rectangle sw(x - w / 2, y + h / 2, w / 2, h / 2);
-		south_west = new QuadTree(sw, capacity);
-
-		divided = true;
-
-		north_east->level = this->level + 1;
-		north_west->level = this->level + 1;
-		south_east->level = this->level + 1;
-		south_west->level = this->level + 1;
-
-		delegateToLeafNodes();
-		capacity = 0;
-	}
-
-	void delegateToLeafNodes()
-	{
-		if (!divided)
-			return;
-
-		int size = m_points.size();
-		for (int i = 0; i < size; ++i)
-		{
-			if (north_west->insert(m_points[i]) ||
-				north_east->insert(m_points[i]) ||
-				south_west->insert(m_points[i]) ||
-				south_east->insert(m_points[i]))
-			{
-				m_points.erase(m_points.begin() + i);
-			}
-
-			if (size != (int)m_points.size())
-			{
-				--i;
-				size = m_points.size();
-			}
-		}
-		//m_points.clear(); // not sure about this?
-	}
-	
 
 	bool insert(Point* p, float eps = 0.f)
 	{
-		//if(divided && m_points.size() != 0)
-		//	delegateToLeafNodes();
-
+		if (p->initialized)
+		{
+			// adding this to only update cells vacant of points
+			if (p->cell && p->cell->boundary.contains(p->pos, eps))
+				return true;
+			else
+			{
+				p->cell = nullptr;
+				p->initialized = false;
+			}
+		
+		}
+		
 		if (!boundary.contains(p->pos, eps))
 			return false;
 		
+		divided = false;
+
 		if (m_points.size() < capacity)
 		{
-			m_points.push_back(p);
+			m_points.push_back(*p);
+			p->cell = this;
 			return true;
 		}
 		else
 		{
-			if (!divided)
-			{
-				subdivide();
-			}
+			int x = boundary.x;
+			int y = boundary.y;
+			int w = boundary.w;
+			int h = boundary.h;
+		
+	
+				Rectangle ne(x + w / 2, y - h / 2, w / 2, h / 2);
+				Rectangle nw(x - w / 2, y - h / 2, w / 2, h / 2);
+				Rectangle se(x + w / 2, y + h / 2, w / 2, h / 2);
+				Rectangle sw(x - w / 2, y + h / 2, w / 2, h / 2);
 
-			if (north_west->insert(p) ||
-				north_east->insert(p) ||
-				south_west->insert(p) ||
-				south_east->insert(p)) 
-				return true;
-			else
-			{
-				m_points.push_back(p);
-				return true;
-			}
+				if (ne.contains(p->pos, eps))
+				{
+					divided = true;
+					if (!north_east)
+						north_east = new QuadTree(ne, capacity);
+
+					return north_east->insert(p);
+				}
+				else if (nw.contains(p->pos, eps))
+				{
+					divided = true;
+					if (!north_west)
+						north_west = new QuadTree(nw, capacity);
+
+					return north_west->insert(p);
+				}
+				else if (se.contains(p->pos, eps))
+				{
+					divided = true;
+					if (!south_east)
+						south_east = new QuadTree(se, capacity);
+
+					return south_east->insert(p);
+				}
+				else if (sw.contains(p->pos, eps))
+				{
+					divided = true;
+					if (!south_west)
+						south_west = new QuadTree(sw, capacity);
+
+					return south_west->insert(p);
+				}
+				else
+				{
+					m_points.push_back(*p);
+					return true;
+				}
 		}
 		return false;
 	}
@@ -262,27 +142,41 @@ public:
 		{
 			m_points.clear();
 		}
-		else
+
+		if (north_west != nullptr)
 		{
 			north_west->clear();
-			north_east->clear();
-			south_west->clear();
-			south_east->clear();
-
 			delete north_west;
+			north_west = nullptr;
+		}
+		if (north_east != nullptr)
+		{
+			north_east->clear();
 			delete north_east;
+			north_east = nullptr;
+		}
+		if (south_west != nullptr)
+		{
+			south_west->clear();
 			delete south_west;
-			delete south_east;
+			south_west = nullptr;
 
-			divided = false;
-			capacity = newCapacity;
+		}
+		if (south_east != nullptr)
+		{
+			south_east->clear();
+			delete south_east;
+			south_east = nullptr;
 		}
 
+		divided = false;
+		capacity = newCapacity;
+		
 		if(allBounds.size())
 			allBounds.clear();
 	}
 
-	void query(Rectangle range, std::vector<Point*>* result)
+	void query(Rectangle range, std::vector<Point>* result)
 	{
 		if (!divided && !m_points.size())
 			return;
@@ -294,26 +188,26 @@ public:
 
 			if (divided)
 			{
-				north_west->query(range, result);
-				north_east->query(range, result);
-				south_west->query(range, result);
-				south_east->query(range, result);
+				if (north_west && north_west->boundary.intersects(range))
+					north_west->query(range, result);
+				if (north_east && north_east->boundary.intersects(range))
+					north_east->query(range, result);
+				if (south_west && south_west->boundary.intersects(range))
+					south_west->query(range, result);
+				if (south_east && south_east->boundary.intersects(range))
+					south_east->query(range, result);
 			}
 
 			for (int i = 0; i < m_points.size(); i++)
-			{
-				if (range.contains(m_points[i]->pos))
-				{
+				if (range.contains(m_points[i].pos))
  					result->push_back(m_points[i]);
-				}
-			}
 		}
 		return;
 	}
 
 	void GetBoundsLineSegments(std::vector<glm::vec2>& lines)
 	{
-		lines = allBounds;
+		//lines = allBounds;
 	}
 
 	int totalInserted()
@@ -332,34 +226,12 @@ public:
 		return total;
 	}
 
-	void drawGrid()
-	{
-		glEnable(GL_PROGRAM_POINT_SIZE_EXT);
-
-		if (divided)
-		{
-			drawBounds(boundary);
-			north_west->drawGrid();
-			north_east->drawGrid();
-			south_west->drawGrid();
-			south_east->drawGrid();
-		}
-
-		if (m_points.size())
-		{
-			if (divided)
-				drawQuad(boundary, 1.0f, 0.0f, 0.0f, 0.3f);
-			else
-				drawQuad(boundary, 0.0f, 0.8f, 1.0f, 0.05f);
-		}
-	}
-
 	int level = 0;
 
 private:
 	Rectangle boundary;
 	int capacity;
-	std::vector<Point*> m_points{};
+	std::vector<Point> m_points{};
 
 	bool divided = false;
 
